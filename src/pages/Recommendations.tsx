@@ -2,16 +2,50 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Clock, Coffee, Lightbulb, Target, TrendingUp, Zap, Apple, Dumbbell, Lock } from "lucide-react";
-import { useAccount } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
+import { parseEther } from 'viem';
+import { INSIGHTS_CONTRACT_ADDRESS, INSIGHTS_CONTRACT_ABI } from '@/lib/wagmi-config';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const Recommendations = () => {
   const checkIns = JSON.parse(localStorage.getItem("checkIns") || "[]");
   const hasEnoughData = checkIns.length >= 3;
   const { address, isConnected } = useAccount();
-  const [isPaying, setIsPaying] = useState(false);
-  const [hasAccess, setHasAccess] = useState(false);
+  
+  // Read contract to check if user has paid
+  const { data: hasAccessFromContract, refetch: refetchAccess } = useReadContract({
+    address: INSIGHTS_CONTRACT_ADDRESS,
+    abi: INSIGHTS_CONTRACT_ABI,
+    functionName: 'hasAccess',
+    args: address ? [address] : undefined,
+  });
+  
+  // Write contract for payment
+  const { data: hash, writeContract, isPending, error } = useWriteContract();
+  
+  // Wait for transaction confirmation
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash,
+  });
+  
+  // Track payment state
+  const hasAccess = hasAccessFromContract || false;
+  
+  // Handle successful payment
+  useEffect(() => {
+    if (isConfirmed) {
+      toast.success('Payment confirmed! Unlocking insights...');
+      refetchAccess();
+    }
+  }, [isConfirmed, refetchAccess]);
+  
+  // Handle errors
+  useEffect(() => {
+    if (error) {
+      toast.error(`Transaction failed: ${error.message}`);
+    }
+  }, [error]);
 
   const handlePayForInsights = async () => {
     if (!isConnected || !address) {
@@ -19,14 +53,20 @@ const Recommendations = () => {
       return;
     }
     
-    setIsPaying(true);
-    // Simulate payment for now - replace with actual contract call after deployment
-    setTimeout(() => {
-      toast.success('Payment successful! Unlocking insights...');
-      setHasAccess(true);
-      setIsPaying(false);
-      localStorage.setItem(`hasAccess_${address}`, 'true');
-    }, 2000);
+    // Check if contract address is configured
+    if (INSIGHTS_CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
+      toast.error('Contract not yet deployed. Please deploy the smart contract first and update the address in wagmi-config.ts');
+      return;
+    }
+    
+    toast.info('Please confirm the transaction in your wallet...');
+    
+    writeContract({
+      abi: INSIGHTS_CONTRACT_ABI,
+      address: INSIGHTS_CONTRACT_ADDRESS,
+      functionName: 'payForInsights',
+      value: parseEther('0.001'),
+    } as any);
   };
 
   const recommendations = [
@@ -166,11 +206,13 @@ const Recommendations = () => {
 
             <Button
               onClick={handlePayForInsights}
-              disabled={isPaying}
+              disabled={isPending || isConfirming}
               className="w-full bg-gradient-primary h-12"
               size="lg"
             >
-              {isPaying ? 'Processing...' : 'Pay & Unlock Insights'}
+              {isPending && 'Check your wallet...'}
+              {isConfirming && 'Confirming transaction...'}
+              {!isPending && !isConfirming && 'Pay & Unlock Insights'}
             </Button>
 
             <p className="text-xs text-center text-muted-foreground">

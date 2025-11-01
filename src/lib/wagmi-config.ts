@@ -1,6 +1,7 @@
 import { http, createConfig } from 'wagmi'
 import { celo, celoAlfajores } from 'wagmi/chains'
 import { injected, walletConnect } from 'wagmi/connectors'
+import { type Address } from 'viem'
 
 export const config = createConfig({
   chains: [celo, celoAlfajores],
@@ -17,7 +18,7 @@ export const config = createConfig({
 })
 
 // Smart contract address for insights payment (deploy contract and update this)
-export const INSIGHTS_CONTRACT_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
+export const INSIGHTS_CONTRACT_ADDRESS: Address = '0x0000000000000000000000000000000000000000';
 
 // ABI for the insights payment contract
 export const INSIGHTS_CONTRACT_ABI = [
