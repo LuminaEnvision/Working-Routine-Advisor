@@ -21,9 +21,14 @@ const checkInQuestions: CheckInQuestion[] = [
     options: ["0-1", "2-3", "4-5", "6+"],
   },
   {
-    id: "firstBreak",
-    question: "When did you take your first break?",
-    options: ["Before 10am", "10am-12pm", "12pm-2pm", "After 2pm", "No breaks yet"],
+    id: "exercise",
+    question: "Did you exercise or move your body today?",
+    options: ["No movement", "Light walk (10-20 min)", "Moderate (30-45 min)", "Intense workout (60+ min)", "Multiple sessions"],
+  },
+  {
+    id: "meals",
+    question: "How would you rate your meals today?",
+    options: ["Mostly processed/fast food", "Some healthy choices", "Balanced meals", "Very nutritious", "Perfectly planned"],
   },
   {
     id: "distractions",

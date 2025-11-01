@@ -27,7 +27,7 @@ const Layout = ({ children }: LayoutProps) => {
               <Brain className="w-6 h-6 text-primary-foreground" />
             </div>
             <span className="text-xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-              Daily Advisor
+              Daily Productivity Advisor
             </span>
           </Link>
         </div>
