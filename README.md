@@ -1,73 +1,62 @@
-# Welcome to your Lovable project
+# Working Routine Advisor — Powered by Celo
 
-## Project info
+Working Routine Advisor is a Web3-powered app helping users build consistent daily habits through on-chain check-ins, token rewards, and personalized insights.
+Built on Celo, the app combines sustainability and behavioral science to reward consistency and self-care.
 
-**URL**: https://lovable.dev/projects/963c3201-9658-419e-b04f-6f9e4f611229
+# Features
+	•	✅ Daily Check-ins: Users check in with small CELO fee or via subscription
+	•	💎 Subscription System: Pay once in cUSD to unlock advanced features & stats
+	•	🌱 Token Rewards: Earn $INSIGHT tokens for consistency and progress
+	•	📊 Progress Dashboard: Track streaks, frequency, and personal growth
+	•	🧠 AI-Enhanced Insights (coming soon): Personalized routine analysis for subscribers
 
-## How can I edit this code?
+⸻
 
-There are several ways of editing your application.
+# Architecture
 
-**Use Lovable**
+Smart Contracts	(Solidity, Hardhat, OpenZeppelin): InsightsPayment & InsightToken manage logic & rewards
+Frontend (React, Vite, Wagmi, Viem	Wallet): integration, subscription & check-in UI
+Blockchain (CELO mainnet):	Fast, low-cost, eco-friendly transactions
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/963c3201-9658-419e-b04f-6f9e4f611229) and start prompting.
 
-Changes made via Lovable will be committed automatically to this repo.
+⸻
 
-**Use your preferred IDE**
+# Repositories
+	•	Frontend — Working-Routine-Advisor￼
+	•	Smart Contracts — insights-contracts￼
+	•	AI & Insights Bot — insights-bot (upcoming)￼
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+⸻
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+# Installation (Frontend)
 
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+'''
+git clone https://github.com/LuminaEnvision/Working-Routine-Advisor
+cd Working-Routine-Advisor
+npm install
 npm run dev
-```
 
-**Edit a file directly in GitHub**
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+⸻
 
-**Use GitHub Codespaces**
+# Contracts Deployment
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+'''
+cd insights-contracts
+npx hardhat compile
+npx hardhat run scripts/deploy.cjs --network celo
 
-## What technologies are used for this project?
+Then copy your deployed contract addresses into your frontend .env file.
 
-This project is built with:
+⸻
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+# Tokenomics
+	•	Token: $INSIGHT
+	•	Utility: Reward for consistent check-ins
+	•	Future use: Upgradeable to liquid ERC20 for open trading and DAO participation
 
-## How can I deploy this project?
+⸻
 
-Simply open [Lovable](https://lovable.dev/projects/963c3201-9658-419e-b04f-6f9e4f611229) and click on Share -> Publish.
+# License
 
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+MIT © 2025 Lumina Envision
