@@ -1,4 +1,4 @@
-# Working Routine Advisor — Powered by Celo
+# Working Routine Advisor - Powered by Celo
 
 **Working Routine Advisor** is a Web3-powered app helping users build consistent daily habits through on-chain check-ins, token rewards, and personalized insights.
 Built on **Celo**, the app combines sustainability and behavioral science to reward consistency and self-care.
