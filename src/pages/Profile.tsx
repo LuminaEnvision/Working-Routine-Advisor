@@ -1,78 +1,98 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { useAccount } from "wagmi";
+import { Card, CardContent, CardHeader, CardDescription, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { User, Zap } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { WalletConnect } from "@/components/WalletConnect";
+import { useInsightsPayment } from "@/hooks/use-InsightsPayment";
 
 const Profile = () => {
-  const checkIns = JSON.parse(localStorage.getItem("checkIns") || "[]");
-  const currentStreak = 5;
+  const { address, isConnected } = useAccount();
+  const { status } = useInsightsPayment();
 
   return (
-    <div className="space-y-6 py-4 animate-fade-in">
-      {/* Profile Header */}
-      <div className="text-center space-y-4">
-        <div className="w-20 h-20 rounded-full bg-gradient-primary mx-auto flex items-center justify-center">
-          <User className="w-10 h-10 text-primary-foreground" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold">Your Profile</h1>
-          <p className="text-muted-foreground">Track your progress and manage your account</p>
-        </div>
+    <div className="space-y-6 py-6">
+      <div className="text-center space-y-2">
+        <h1 className="text-3xl font-bold">Profile</h1>
+        <p className="text-muted-foreground">
+          View your wallet and check-in statistics
+        </p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 gap-4">
-        <Card className="shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-muted-foreground">Total Check-ins</CardTitle>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="shadow-md">
+          <CardHeader>
+            <CardTitle>Wallet & Stats</CardTitle>
+            <CardDescription>
+              Your wallet connection and check-in statistics
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-primary">{checkIns.length}</div>
+          <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Connected wallet</p>
+              <p className="font-mono text-sm break-all">
+                {isConnected && address ? address : "Not connected"}
+              </p>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Total Check-ins
+                </span>
+                <Badge variant="secondary">
+                  {status.checkinCount}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Next Reward
+                </span>
+                <Badge variant="secondary">
+                  {status.checkinsUntilReward} check-ins away
+                </Badge>
+              </div>
+            </div>
+
+            <Separator />
+
+            <WalletConnect />
           </CardContent>
         </Card>
 
-        <Card className="shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-muted-foreground">Current Streak</CardTitle>
+        <Card className="shadow-md">
+          <CardHeader>
+            <CardTitle>Rewards</CardTitle>
+            <CardDescription>
+              Track your $INSIGHT token rewards
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-accent">{currentStreak}</div>
-            <p className="text-xs text-muted-foreground mt-1">days in a row 🔥</p>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Check-in Count
+                </span>
+                <Badge variant="secondary">
+                  {status.checkinCount}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Progress to Next Reward
+                </span>
+                <Badge variant="secondary">
+                  {status.checkinCount % 5} / 5
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Earn 50 $INSIGHT tokens every 5 check-ins
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
-
-      {/* Wallet Connection */}
-      <Card className="border-primary/20">
-        <CardHeader>
-          <CardTitle>CELO Wallet</CardTitle>
-          <CardDescription>
-            Connect your wallet to unlock insights with a small transaction fee
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <WalletConnect />
-        </CardContent>
-      </Card>
-
-      {/* Account Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Account Settings</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Button variant="outline" className="w-full justify-start" size="lg">
-            Connected via Farcaster
-          </Button>
-          <Button variant="outline" className="w-full justify-start" size="lg">
-            Notification Preferences
-          </Button>
-          <Button variant="outline" className="w-full justify-start text-destructive hover:text-destructive" size="lg">
-            Sign Out
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 };

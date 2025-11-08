@@ -22,12 +22,12 @@ const Layout = ({ children }: LayoutProps) => {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-lg border-b border-border">
         <div className="container max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
-              <Brain className="w-6 h-6 text-primary-foreground" />
+          <Link to="/" className="flex items-center gap-3 group">
+            <div className="w-12 h-12 rounded-xl bg-gradient-celo flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform shadow-lg">
+              <Brain className="w-7 h-7 text-white" />
             </div>
-            <span className="text-xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-              Daily Productivity Advisor
+            <span className="text-lg sm:text-xl font-bold text-foreground">
+              Routine Advisor
             </span>
           </Link>
         </div>
@@ -51,10 +51,10 @@ const Layout = ({ children }: LayoutProps) => {
                   key={item.path}
                   to={item.path}
                   className={cn(
-                    "flex flex-col items-center justify-center gap-1 min-w-[64px] h-16 rounded-xl transition-all",
+                    "flex flex-col items-center justify-center gap-1 min-w-[64px] h-16 rounded-xl transition-all relative",
                     isActive
-                      ? "text-primary"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "text-primary bg-primary/10"
+                      : "text-muted-foreground hover:text-primary hover:bg-primary/5"
                   )}
                 >
                   <Icon 
@@ -63,9 +63,9 @@ const Layout = ({ children }: LayoutProps) => {
                       isActive && "scale-110"
                     )} 
                   />
-                  <span className="text-xs font-medium">{item.label}</span>
+                  <span className={cn("text-xs font-medium", isActive && "font-bold")}>{item.label}</span>
                   {isActive && (
-                    <div className="absolute bottom-1 w-1 h-1 rounded-full bg-primary" />
+                    <div className="absolute bottom-2 w-8 h-1 rounded-full bg-gradient-celo" />
                   )}
                 </Link>
               );
