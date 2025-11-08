@@ -7,11 +7,10 @@ Built on **Celo**, the app combines sustainability and behavioral science to rew
 
 ## Features
 
-- **Daily Check-ins:** Users check in with a small CELO fee or via subscription
-- **Subscription System:** Pay once in cUSD to unlock advanced features & stats
+- **Daily Check-ins:** Users check in with a small CELO fee or via subscription (future versions)
 - **Token Rewards:** Earn **$INSIGHT** tokens for consistency and progress
 - **Progress Dashboard:** Track streaks, frequency, and personal growth
-- **AI-Enhanced Insights (coming soon):** Personalized routine analysis for subscribers
+- **AI-Enhanced Insights (future versions):** Personalized routine analysis for subscribers
 
 ---
 
@@ -25,42 +24,11 @@ Built on **Celo**, the app combines sustainability and behavioral science to rew
 
 ---
 
-## Repositories
-
-- **Frontend** — [Working-Routine-Advisor](https://github.com/LuminaEnvision/Working-Routine-Advisor)
-- **Smart Contracts** — [insights-contracts](https://github.com/LuminaEnvision/insights-contracts)
-- **AI & Insights Bot (upcoming)** — [insights-bot](https://github.com/LuminaEnvision/insights-bot)
-
----
-
-## Installation (Frontend)
-
-```bash
-git clone https://github.com/LuminaEnvision/Working-Routine-Advisor
-cd Working-Routine-Advisor
-npm install
-npm run dev
-```
-
----
-
-## Contracts Deployment
-
-```bash
-cd insights-contracts
-npx hardhat compile
-npx hardhat run scripts/deploy.cjs --network celo
-```
-
-Then copy your deployed contract addresses into your frontend `.env` file.
-
----
-
 ## Tokenomics
 
 - **Token:** $INSIGHT
 - **Utility:** Reward for consistent check-ins
-- **Future use:** Upgradeable to liquid ERC20 for open trading and DAO participation
+- **Future use:** Upgradeable to liquid ERC20 for open trading
 
 ---
 
