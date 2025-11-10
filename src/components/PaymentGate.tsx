@@ -5,6 +5,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Lock, CreditCard, Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useInsightsPayment } from '@/hooks/use-InsightsPayment';
@@ -25,14 +35,15 @@ interface PaymentGateProps {
 }
 
 export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps) => {
-  const { address, isConnected, chainId } = useAccount();
-  const { isOnCorrectChain, ensureCorrectChain } = useChainManager();
+  const { address, isConnected } = useAccount();
+  const { chainId, isOnCorrectChain, ensureCorrectChain } = useChainManager();
   const { status, isLoading, submitCheckin, isProcessing, checkCooldown } = useInsightsPayment();
   const navigate = useNavigate();
   const [isUploadingIPFS, setIsUploadingIPFS] = useState(false);
   const [isCheckingCooldown, setIsCheckingCooldown] = useState(false);
   const [balance, setBalance] = useState<bigint | null>(null);
   const [balanceError, setBalanceError] = useState<Error | null>(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   // Fetch balance manually using publicClient to avoid wagmi hook chain issues
   useEffect(() => {
@@ -84,9 +95,22 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
       return;
     }
 
+    // CRITICAL: Ensure we're on the correct chain BEFORE showing dialog
     if (!isOnCorrectChain) {
+      toast.info('Switching to Celo network...');
       const switched = await ensureCorrectChain();
-      if (!switched) return;
+      if (!switched) {
+        toast.error('Please switch to Celo network (chain ID: 42220) to continue');
+        return;
+      }
+      // Wait a moment for chain switch to complete
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    // Double-check chain after switch attempt
+    if (chainId !== 42220) {
+      toast.error('Please switch to Celo network (chain ID: 42220) to continue');
+      return;
     }
 
     if (!hasSufficientBalance) {
@@ -94,37 +118,78 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
       return;
     }
 
+    // Show confirmation dialog before proceeding
+    setShowConfirmDialog(true);
+  };
+
+  const confirmPayment = async () => {
+    if (!isConnected || !address) {
+      toast.error('Please connect your wallet');
+      setShowConfirmDialog(false);
+      return;
+    }
+
+    // CRITICAL: Verify chain before proceeding with transaction
+    if (!isOnCorrectChain || chainId !== 42220) {
+      toast.error('Please switch to Celo network (chain ID: 42220) to continue');
+      const switched = await ensureCorrectChain();
+      if (!switched) {
+        setShowConfirmDialog(false);
+        return;
+      }
+      // Wait for chain switch to complete
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Final check - if still not on correct chain, abort
+      if (chainId !== 42220) {
+        toast.error('Still not on Celo network. Please switch manually and try again.');
+        setShowConfirmDialog(false);
+        return;
+      }
+    }
+
+    if (!hasSufficientBalance) {
+      toast.error(`Insufficient balance. Need ${formatUnits(CHECKIN_FEE, 18)} CELO`);
+      setShowConfirmDialog(false);
+      return;
+    }
+
+    setShowConfirmDialog(false);
+
     try {
       setIsCheckingCooldown(true);
       
-      // Check cooldown first
-      await checkCooldown();
+      // TESTING: Skip cooldown check - always allow check-ins
+      // await checkCooldown(); // DISABLED FOR TESTING
       
       setIsUploadingIPFS(true);
       
-      // Upload check-in data to IPFS
-      const ipfsHash = await uploadToIPFS(checkInData);
+      // Upload check-in data to IPFS (optional - returns empty string if Pinata not configured)
+      let ipfsHash = '';
+      try {
+        ipfsHash = await uploadToIPFS(checkInData);
+        if (ipfsHash) {
+          console.log('Check-in data uploaded to IPFS:', ipfsHash);
+        } else {
+          console.log('IPFS upload skipped (Pinata not configured). Data stored locally only.');
+        }
+      } catch (error) {
+        console.warn('IPFS upload failed, continuing without IPFS hash:', error);
+        ipfsHash = ''; // Continue without IPFS
+      } finally {
+        setIsUploadingIPFS(false);
+      }
       
-      // Submit check-in with fee
-      const txHash = await submitCheckin(ipfsHash, true);
+      // Submit check-in with fee (ipfsHash can be empty string if IPFS not available)
+      const txHash = await submitCheckin(ipfsHash || 'local', true);
       
       toast.success('Payment successful!', {
         description: `Transaction: ${txHash}`,
       });
 
-      // Save to localStorage
-      const checkIns = JSON.parse(localStorage.getItem('checkIns') || '[]');
-      checkIns.push({ ...checkInData, ipfsHash });
-      localStorage.setItem('checkIns', JSON.stringify(checkIns));
-
-      // Navigate first to avoid state update during navigation
-      navigate('/recommendations');
-      
-      // Call onPaymentComplete after navigation to clean up state
-      // Use requestAnimationFrame to ensure navigation completes first
-      requestAnimationFrame(() => {
-        onPaymentComplete();
-      });
+      // Call onPaymentComplete - it will handle analysis, saving to React state, and navigation
+      // Don't navigate here - let the parent component handle it after analysis completes
+      onPaymentComplete();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Payment failed';
       toast.error(message);
@@ -135,6 +200,8 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
   };
 
 
+  // TESTING: Disable cooldown message - always allow check-ins
+  /* ORIGINAL CODE - DISABLED FOR TESTING
   // Show cooldown message if in cooldown
   if (status.isInCooldown) {
     return (
@@ -165,6 +232,7 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
       </Card>
     );
   }
+  */
 
   if (isLoading || isCheckingCooldown || isUploadingIPFS) {
     return (
@@ -223,12 +291,14 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
               )}
               <Button
                 onClick={handleOneOffPayment}
-                disabled={!hasSufficientBalance || isProcessing || isCheckingCooldown || isUploadingIPFS}
+                disabled={!hasSufficientBalance || !isOnCorrectChain || chainId !== 42220 || isProcessing || isCheckingCooldown || isUploadingIPFS}
                 className="w-full bg-gradient-celo hover:opacity-90"
                 size="lg"
               >
                 <CreditCard className="w-4 h-4 mr-2" />
-                {isProcessing || isCheckingCooldown || isUploadingIPFS
+                {!isOnCorrectChain || chainId !== 42220
+                  ? 'Switch to Celo Network'
+                  : isProcessing || isCheckingCooldown || isUploadingIPFS
                   ? 'Processing...'
                   : `Pay ${formatUnits(CHECKIN_FEE, 18)} CELO`}
               </Button>
@@ -236,6 +306,50 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
           </Card>
         </CardContent>
       </Card>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-primary" />
+              Confirm Payment
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 pt-2">
+                <p className="text-base font-medium">
+                  You are about to send <strong className="text-primary">0.1 CELO</strong> to submit your check-in.
+                </p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Amount:</span>
+                    <span className="font-semibold">0.1 CELO</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Network:</span>
+                    <span className="font-semibold">Celo (Chain ID: 42220)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Your Balance:</span>
+                    <span className="font-semibold">
+                      {balance ? formatUnits(balance, 18) : '0'} CELO
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmPayment}
+              className="bg-gradient-celo hover:opacity-90"
+            >
+              Confirm & Pay 0.1 CELO
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

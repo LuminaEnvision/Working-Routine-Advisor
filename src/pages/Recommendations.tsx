@@ -6,76 +6,104 @@ import { WalletConnect } from "@/components/WalletConnect";
 import { useInsightsPayment } from "@/hooks/use-InsightsPayment";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Lightbulb, Calendar, TestTube } from "lucide-react";
+import { Lightbulb, Calendar, TestTube, Loader2, Sparkles, Utensils, TrendingUp, Target } from "lucide-react";
 import { toast } from "sonner";
+import { generateInsights } from "@/lib/ai";
+import { useCheckIns } from "@/contexts/CheckInContext";
+import type { AnalysisResponse, Meal, CheckInData } from "@/lib/ai";
 
-interface CheckInData {
-  answers: Record<string, string>;
-  timestamp: string;
-  ipfsHash?: string;
+interface InsightResponse {
+  insights: string[];
+  summary: string;
+  recommendations: string[];
 }
 
 const Recommendations = () => {
   const { address, isConnected } = useAccount();
   const { status } = useInsightsPayment();
-  const [checkIns, setCheckIns] = useState<CheckInData[]>([]);
+  const { checkIns } = useCheckIns();
+  const [insights, setInsights] = useState<InsightResponse | null>(null);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
 
-  // Load check-in history from localStorage
+  // Get the latest check-in's analysis
+  const latestCheckIn = checkIns.length > 0 ? checkIns[checkIns.length - 1] : null;
+  const latestAnalysis = latestCheckIn?.analysis;
+
+  // Generate AI insights when check-ins change (for backward compatibility)
   useEffect(() => {
-    if (isConnected) {
-      try {
-        const stored = localStorage.getItem('checkIns');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          setCheckIns(parsed);
-        }
-      } catch (error) {
-        console.error('Failed to load check-ins:', error);
-      }
+    if (checkIns.length > 0) {
+      setIsLoadingInsights(true);
+      setInsightsError(null);
+      
+      generateInsights(checkIns)
+        .then((result) => {
+          setInsights(result);
+          setIsLoadingInsights(false);
+          if (result) {
+            setInsightsError(null);
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to generate insights:', error);
+          setInsightsError('Failed to generate insights. Please try again later.');
+          setIsLoadingInsights(false);
+        });
+    } else {
+      setInsights(null);
+      setInsightsError(null);
     }
-  }, [isConnected]);
+  }, [checkIns]);
 
   // Add mock data for testing (only in development)
   const addMockData = () => {
-    const mockCheckIns: CheckInData[] = [
-      {
-        answers: {
-          focusSessions: "4-5",
-          exercise: "Moderate (30-45 min)",
-          meals: "Balanced meals",
-          distractions: "Emails",
-          energy: "High",
-          satisfaction: "4 - Very"
-        },
-        timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        answers: {
-          focusSessions: "2-3",
-          exercise: "Light walk (10-20 min)",
-          meals: "Some healthy choices",
-          distractions: "Social media",
-          energy: "Moderate",
-          satisfaction: "3 - Moderately"
-        },
-        timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        answers: {
-          focusSessions: "6+",
-          exercise: "Intense workout (60+ min)",
-          meals: "Very nutritious",
-          distractions: "None",
-          energy: "Very high",
-          satisfaction: "5 - Extremely"
-        },
-        timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-    ];
-    
-    localStorage.setItem('checkIns', JSON.stringify(mockCheckIns));
-    setCheckIns(mockCheckIns);
-    toast.success('Mock check-in data added! You can now see the insights page.');
+    toast.info('Mock data feature removed. Please complete a real check-in.');
+  };
+
+  const renderMeal = (meal: Meal | undefined, mealType: string) => {
+    if (!meal) return null;
+
+    return (
+      <Card key={mealType} className="border border-border shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+            <Utensils className="w-5 h-5 text-primary" />
+            {mealType.charAt(0).toUpperCase() + mealType.slice(1)}: {meal.name}
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Prep time: {meal.prepTime}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <h4 className="text-xs font-semibold mb-2">Ingredients:</h4>
+            <ul className="text-xs sm:text-sm text-muted-foreground space-y-1">
+              {meal.ingredients.map((ingredient, idx) => (
+                <li key={idx} className="flex items-start gap-2">
+                  <span className="text-primary">•</span>
+                  <span>{ingredient}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h4 className="text-xs font-semibold mb-2">Steps:</h4>
+            <ol className="text-xs sm:text-sm text-muted-foreground space-y-1">
+              {meal.steps.map((step, idx) => (
+                <li key={idx} className="flex items-start gap-2">
+                  <span className="text-primary font-semibold">{idx + 1}.</span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <div>
+            <h4 className="text-xs font-semibold mb-2">Benefits:</h4>
+            <p className="text-xs sm:text-sm text-muted-foreground">{meal.benefits}</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
   };
 
   return (
@@ -106,31 +134,6 @@ const Recommendations = () => {
 
       {isConnected && (
         <div className="space-y-4">
-          {/* Test Mode - Only show if no check-ins */}
-          {checkIns.length === 0 && import.meta.env.DEV && (
-            <Card className="border-dashed border-primary/30 bg-primary/5">
-              <CardHeader>
-                <CardTitle className="text-sm sm:text-base flex items-center gap-2">
-                  <TestTube className="w-5 h-5 text-primary" />
-                  Test Mode
-                </CardTitle>
-                <CardDescription className="text-xs sm:text-sm">
-                  Add mock check-in data to preview the insights page
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button
-                  onClick={addMockData}
-                  variant="outline"
-                  className="w-full"
-                  size="sm"
-                >
-                  Add Mock Check-in Data
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Stats Card */}
           <Card className="border border-border shadow-sm">
             <CardHeader className="pb-3">
@@ -142,24 +145,219 @@ const Recommendations = () => {
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs sm:text-sm text-muted-foreground">Total Check-ins</span>
-                <Badge variant="secondary" className="text-xs">
-                  {checkIns.length}
+                <Badge variant="secondary">
+                  <span className="text-xs">{checkIns.length}</span>
                 </Badge>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs sm:text-sm text-muted-foreground">Check-in Count</span>
-                <Badge variant="secondary" className="text-xs">
-                  {status.checkinCount}
+                <Badge variant="secondary">
+                  <span className="text-xs">{status.checkinCount}</span>
                 </Badge>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs sm:text-sm text-muted-foreground">Next Reward</span>
-                <Badge variant="secondary" className="text-xs">
-                  {status.checkinsUntilReward} check-ins away
+                <Badge variant="secondary">
+                  <span className="text-xs">{status.checkinsUntilReward} check-ins away</span>
                 </Badge>
               </div>
             </CardContent>
           </Card>
+
+          {/* Latest Analysis from AI (New Format) */}
+          {latestAnalysis && (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  Latest Analysis
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
+                  Personalized analysis from your most recent check-in
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Assessment */}
+                {latestAnalysis.assessment && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold">Overall Assessment</h3>
+                    <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                      {latestAnalysis.assessment}
+                    </p>
+                  </div>
+                )}
+
+                {/* Concerns */}
+                {latestAnalysis.concerns && latestAnalysis.concerns.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      <Target className="w-4 h-4 text-primary" />
+                      Key Areas of Concern
+                    </h3>
+                    <ul className="space-y-2">
+                      {latestAnalysis.concerns.map((concern, index) => (
+                        <li key={index} className="text-xs sm:text-sm text-muted-foreground flex items-start gap-2">
+                          <span className="text-destructive font-semibold">•</span>
+                          <span>{concern}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Recommendations */}
+                {latestAnalysis.recommendations && latestAnalysis.recommendations.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-primary" />
+                      Actionable Recommendations
+                    </h3>
+                    <div className="space-y-3">
+                      {latestAnalysis.recommendations
+                        .sort((a, b) => a.priority - b.priority)
+                        .map((rec, index) => (
+                          <Card key={index} className="border border-border shadow-sm">
+                            <CardHeader className="pb-2">
+                              <div className="flex items-center justify-between">
+                                <CardTitle className="text-xs sm:text-sm font-semibold">
+                                  {rec.title}
+                                </CardTitle>
+                                <Badge variant="outline" className="text-xs">
+                                  Priority {rec.priority}
+                                </Badge>
+                              </div>
+                              <CardDescription className="text-xs capitalize">
+                                {rec.category}
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-2">
+                              <p className="text-xs sm:text-sm text-muted-foreground">
+                                <span className="font-semibold">Action: </span>
+                                {rec.action}
+                              </p>
+                              <p className="text-xs sm:text-sm text-muted-foreground">
+                                <span className="font-semibold">Why: </span>
+                                {rec.why}
+                              </p>
+                            </CardContent>
+                          </Card>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Meal Plan */}
+                {latestAnalysis.mealPlan && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      <Utensils className="w-4 h-4 text-primary" />
+                      Personalized Meal Plan
+                    </h3>
+                    <div className="space-y-3">
+                      {renderMeal(latestAnalysis.mealPlan.breakfast, 'breakfast')}
+                      {renderMeal(latestAnalysis.mealPlan.lunch, 'lunch')}
+                      {renderMeal(latestAnalysis.mealPlan.dinner, 'dinner')}
+                    </div>
+                  </div>
+                )}
+
+                {/* Quick Wins */}
+                {latestAnalysis.quickWins && latestAnalysis.quickWins.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold">Quick Wins (Do Today)</h3>
+                    <ul className="space-y-2">
+                      {latestAnalysis.quickWins.map((win, index) => (
+                        <li key={index} className="text-xs sm:text-sm text-muted-foreground flex items-start gap-2">
+                          <span className="text-primary font-semibold">✓</span>
+                          <span>{win}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Tracking Metrics */}
+                {latestAnalysis.trackingMetrics && latestAnalysis.trackingMetrics.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold">Metrics to Track</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {latestAnalysis.trackingMetrics.map((metric, index) => (
+                        <Badge key={index} variant="secondary" className="text-xs">
+                          {metric}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Legacy AI Insights Card (for backward compatibility) */}
+          {checkIns.length > 0 && !latestAnalysis && (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  AI-Powered Insights
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
+                  Personalized analysis of your check-in patterns
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isLoadingInsights ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary mr-2" />
+                    <span className="text-sm text-muted-foreground">Generating insights...</span>
+                  </div>
+                ) : insightsError ? (
+                  <div className="text-sm text-muted-foreground text-center py-4">
+                    {insightsError}
+                  </div>
+                ) : insights ? (
+                  <>
+                    {insights.summary && (
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-semibold">Summary</h3>
+                        <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                          {insights.summary}
+                        </p>
+                      </div>
+                    )}
+
+                    {insights.insights && insights.insights.length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-semibold">Key Insights</h3>
+                        <ul className="space-y-2">
+                          {insights.insights.map((insight, index) => (
+                            <li key={index} className="text-xs sm:text-sm text-muted-foreground flex items-start gap-2">
+                              <Lightbulb className="w-4 h-4 text-accent mt-0.5 flex-shrink-0" />
+                              <span>{insight}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {insights.recommendations && insights.recommendations.length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-semibold">Recommendations</h3>
+                        <ul className="space-y-2">
+                          {insights.recommendations.map((recommendation, index) => (
+                            <li key={index} className="text-xs sm:text-sm text-muted-foreground flex items-start gap-2">
+                              <span className="text-primary font-semibold">•</span>
+                              <span>{recommendation}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                ) : null}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Check-in History */}
           {checkIns.length > 0 ? (
@@ -181,6 +379,7 @@ const Recommendations = () => {
                         hour: '2-digit',
                         minute: '2-digit',
                       })}
+                      {checkIn.timeOfDay && ` • ${checkIn.timeOfDay}`}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -190,7 +389,7 @@ const Recommendations = () => {
                           <span className="text-muted-foreground capitalize">
                             {key.replace(/([A-Z])/g, ' $1').trim()}:
                           </span>
-                          <span className="font-medium">{value}</span>
+                          <span className="font-medium">{String(value)}</span>
                         </div>
                       ))}
                     </div>
