@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiConfig } from "wagmi";
 import { wagmiConfig } from "@/lib/wagmi-config";
 import { FarcasterProvider } from "@/providers/FarcasterProvider";
+import { CheckInProvider } from "@/contexts/CheckInContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 import { Toaster } from "@/components/ui/toaster";
@@ -31,27 +32,29 @@ const App = () => (
     <WagmiConfig config={wagmiConfig}>
       <FarcasterProvider>
         <QueryClientProvider client={queryClient}>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter
-              future={{
-                v7_startTransition: true,
-                v7_relativeSplatPath: true,
-              }}
-            >
-              <Layout>
-                <Routes>
-                  <Route path="/" element={<Index />} />
-                  <Route path="/onboarding" element={<Onboarding />} />
-                  <Route path="/daily-checkin" element={<DailyCheckIn />} />
-                  <Route path="/recommendations" element={<Recommendations />} />
-                  <Route path="/profile" element={<Profile />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Layout>
-            </BrowserRouter>
-          </TooltipProvider>
+          <CheckInProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter
+                future={{
+                  v7_startTransition: true,
+                  v7_relativeSplatPath: true,
+                }}
+              >
+                <Layout>
+                  <Routes>
+                    <Route path="/" element={<Index />} />
+                    <Route path="/onboarding" element={<Onboarding />} />
+                    <Route path="/daily-checkin" element={<DailyCheckIn />} />
+                    <Route path="/recommendations" element={<Recommendations />} />
+                    <Route path="/profile" element={<Profile />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Layout>
+              </BrowserRouter>
+            </TooltipProvider>
+          </CheckInProvider>
         </QueryClientProvider>
       </FarcasterProvider>
     </WagmiConfig>

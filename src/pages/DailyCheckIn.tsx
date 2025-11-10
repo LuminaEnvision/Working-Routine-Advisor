@@ -1,45 +1,80 @@
-import { useMemo, useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Progress } from "@/components/ui/progress";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Brain, ChevronRight, Clock } from "lucide-react";
+import { Brain, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAccount } from "wagmi";
 import { useInsightsPayment } from "@/hooks/use-InsightsPayment";
 import { PaymentGate } from "@/components/PaymentGate";
-import { Link } from "react-router-dom";
-
-interface CheckInQuestion {
-  id: string;
-  question: string;
-  options: string[];
-}
-
-const checkInQuestions: CheckInQuestion[] = [
-  { id: "focusSessions", question: "How many focused work sessions did you complete today?", options: ["0-1", "2-3", "4-5", "6+"] },
-  { id: "exercise", question: "Did you exercise or move your body today?", options: ["No movement", "Light walk (10-20 min)", "Moderate (30-45 min)", "Intense workout (60+ min)", "Multiple sessions"] },
-  { id: "meals", question: "How would you rate your meals today?", options: ["Mostly processed/fast food", "Some healthy choices", "Balanced meals", "Very nutritious", "Perfectly planned"] },
-  { id: "distractions", question: "What were your top distractions today?", options: ["Social media", "Emails", "Meetings", "Phone calls", "None"] },
-  { id: "energy", question: "How's your energy level right now?", options: ["Very low", "Low", "Moderate", "High", "Very high"] },
-  { id: "satisfaction", question: "How satisfied are you with today's productivity?", options: ["1 - Not at all", "2 - Slightly", "3 - Moderately", "4 - Very", "5 - Extremely"] },
-];
+import { Link, useNavigate } from "react-router-dom";
+import { generateDailyQuestions, analyzeAndRecommend, type Question, type QuestionResponse, type CheckInData } from "@/lib/ai";
+import { useCheckIns } from "@/contexts/CheckInContext";
 
 const DailyCheckIn = () => {
   const { address, isConnected } = useAccount();
   const { status, isLoading } = useInsightsPayment();
+  const navigate = useNavigate();
+  const { addCheckIn, getPreviousCheckIn, getHistoricalData } = useCheckIns();
+  
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [responses, setResponses] = useState<Record<string, QuestionResponse>>({});
   const [showPaymentGate, setShowPaymentGate] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const question = checkInQuestions[currentQuestion];
-  const progress = ((currentQuestion + 1) / checkInQuestions.length) * 100;
-  const isLastQuestion = currentQuestion === checkInQuestions.length - 1;
+  // Generate questions on mount
+  useEffect(() => {
+    if (isConnected && address && questions.length === 0 && !isLoadingQuestions) {
+      loadQuestions();
+    }
+  }, [isConnected, address]);
 
-  const handleCheckIn = async () => {
-    if (!answers[question.id]) {
+  const loadQuestions = async () => {
+    setIsLoadingQuestions(true);
+    try {
+      const previousCheckIn = getPreviousCheckIn();
+      const currentTime = new Date();
+      const result = await generateDailyQuestions(address || 'user', currentTime, previousCheckIn);
+      setQuestions(result.questions);
+    } catch (error) {
+      console.error('Failed to generate questions:', error);
+      toast.error('Failed to load questions. Please try again.');
+    } finally {
+      setIsLoadingQuestions(false);
+    }
+  };
+
+  const question = questions[currentQuestion];
+  const progress = questions.length > 0 ? ((currentQuestion + 1) / questions.length) * 100 : 0;
+  const isLastQuestion = currentQuestion === questions.length - 1;
+
+  const handleAnswer = (optionValue: string) => {
+    if (!question) return;
+    
+    const selectedOption = question.options.find(opt => opt.value === optionValue);
+    if (!selectedOption) return;
+
+    const response: QuestionResponse = {
+      questionId: question.id,
+      selectedOption: optionValue,
+      score: selectedOption.score,
+    };
+
+    setResponses((prev) => ({
+      ...prev,
+      [question.id.toString()]: response,
+    }));
+  };
+
+  const handleNext = async () => {
+    if (!question) return;
+
+    // Check if answer is selected
+    if (!responses[question.id.toString()]) {
       toast.error("Please select an answer");
       return;
     }
@@ -57,52 +92,94 @@ const DailyCheckIn = () => {
     }
   };
 
+  const handlePaymentComplete = async () => {
+    // After payment, analyze responses and save check-in
+    setIsAnalyzing(true);
+    setShowPaymentGate(false); // Hide payment gate to show analyzing state
+    
+    try {
+      console.log('Starting analysis with responses:', responses);
+      const historicalData = getHistoricalData(7);
+      console.log('Historical data:', historicalData);
+      
+      const analysis = await analyzeAndRecommend(responses, historicalData);
+      console.log('Analysis completed:', analysis);
+      
+      const currentTime = new Date();
+      const hour = currentTime.getHours();
+      const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+
+      const checkInData: CheckInData = {
+        answers: Object.fromEntries(
+          Object.entries(responses).map(([key, response]: [string, QuestionResponse]) => [
+            key,
+            questions.find(q => q.id === response.questionId)?.options.find(opt => opt.value === response.selectedOption)?.text || response.selectedOption,
+          ])
+        ),
+        timestamp: currentTime.toISOString(),
+        questions,
+        responses,
+        analysis,
+        timeOfDay,
+      };
+
+      console.log('Saving check-in data:', checkInData);
+      addCheckIn(checkInData);
+      console.log('Check-in saved successfully');
+      
+      // Reset state
+      setCurrentQuestion(0);
+      setResponses({});
+      setQuestions([]);
+      
+      // Navigate to recommendations to see the analysis
+      setTimeout(() => {
+        navigate('/recommendations');
+        toast.success('Check-in completed! View your personalized recommendations.');
+      }, 500); // Small delay to ensure state is saved
+    } catch (error) {
+      console.error('Failed to analyze check-in:', error);
+      toast.error('Check-in saved, but analysis failed. Please try again later.');
+      setIsAnalyzing(false);
+      
+      // Still save the check-in without analysis
+      const currentTime = new Date();
+      const hour = currentTime.getHours();
+      const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+
+      const checkInData: CheckInData = {
+        answers: Object.fromEntries(
+          Object.entries(responses).map(([key, response]: [string, QuestionResponse]) => [
+            key,
+            questions.find(q => q.id === response.questionId)?.options.find(opt => opt.value === response.selectedOption)?.text || response.selectedOption,
+          ])
+        ),
+        timestamp: currentTime.toISOString(),
+        questions,
+        responses,
+        timeOfDay,
+      };
+
+      addCheckIn(checkInData);
+      navigate('/recommendations');
+    }
+  };
+
   // Show payment gate if user completed questions
   if (showPaymentGate) {
     return (
       <PaymentGate
         checkInData={{
-          answers,
+          answers: Object.fromEntries(
+            Object.entries(responses).map(([key, response]: [string, QuestionResponse]) => [
+              key,
+              questions.find(q => q.id === response.questionId)?.options.find(opt => opt.value === response.selectedOption)?.text || response.selectedOption,
+            ])
+          ),
           timestamp: new Date().toISOString(),
         }}
-        onPaymentComplete={() => {
-          // Reset state when payment completes (but navigation will happen first)
-          setShowPaymentGate(false);
-          setCurrentQuestion(0);
-          setAnswers({});
-        }}
+        onPaymentComplete={handlePaymentComplete}
       />
-    );
-  }
-
-  // Show cooldown message if in cooldown
-  if (!isLoading && status.isInCooldown) {
-    return (
-      <div className="space-y-6 py-4">
-        <Card className="border-warning">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-warning" />
-              Check-in Cooldown
-            </CardTitle>
-            <CardDescription>
-              You already checked in today. Please wait before checking in again.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Alert>
-              <AlertDescription>
-                You can check in again in <strong>{status.hoursUntilNextCheckin} hours</strong>.
-              </AlertDescription>
-            </Alert>
-            <Link to="/recommendations">
-              <Button className="w-full" variant="outline">
-                View Previous Insights
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
     );
   }
 
@@ -129,6 +206,42 @@ const DailyCheckIn = () => {
     );
   }
 
+  // Loading questions
+  if (isLoadingQuestions || questions.length === 0) {
+    return (
+      <div className="space-y-4 sm:space-y-6 py-4 animate-fade-in">
+        <Card className="border border-border shadow-sm">
+          <CardContent className="pt-6 pb-6">
+            <div className="flex flex-col items-center justify-center space-y-4 py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">
+                Generating personalized questions for you...
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Analyzing responses
+  if (isAnalyzing) {
+    return (
+      <div className="space-y-4 sm:space-y-6 py-4 animate-fade-in">
+        <Card className="border border-border shadow-sm">
+          <CardContent className="pt-6 pb-6">
+            <div className="flex flex-col items-center justify-center space-y-4 py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">
+                Analyzing your responses and generating recommendations...
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 sm:space-y-6 py-4 animate-fade-in">
       {/* Payment Info */}
@@ -145,9 +258,8 @@ const DailyCheckIn = () => {
         </CardContent>
       </Card>
 
-      {/* Question Card - Clean Design with Geometric Accents */}
+      {/* Question Card */}
       <Card className="border border-border shadow-sm bg-card relative overflow-hidden">
-        {/* Subtle geometric pattern */}
         <div className="absolute top-0 right-0 w-16 h-16 bg-primary/3 rounded-bl-full" />
         <CardContent className="pt-4 sm:pt-6 relative z-10">
           <div className="flex gap-3 sm:gap-4">
@@ -155,20 +267,32 @@ const DailyCheckIn = () => {
               <Brain className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
             </div>
             <div className="flex-1 space-y-3">
-              <CardTitle className="text-sm sm:text-base font-medium leading-tight">{question.question}</CardTitle>
-              <RadioGroup
-                value={answers[question.id]}
-                onValueChange={(val) => setAnswers({ ...answers, [question.id]: val })}
-                className="grid grid-cols-1 sm:grid-cols-2 gap-2"
-              >
-                {question.options.map((opt) => (
-                  <div key={opt} className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
-                    <RadioGroupItem value={opt} id={opt} />
-                    <Label htmlFor={opt} className="text-xs sm:text-sm cursor-pointer flex-1">{opt}</Label>
-                  </div>
-                ))}
-              </RadioGroup>
+              <CardTitle className="text-sm sm:text-base font-medium leading-tight">
+                {question?.question}
+              </CardTitle>
+              {question && (
+                <RadioGroup
+                  value={responses[question.id.toString()]?.selectedOption || ""}
+                  onValueChange={handleAnswer}
+                  className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+                >
+                  {question.options.map((opt) => (
+                    <div
+                      key={opt.value}
+                      className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50 transition-colors"
+                    >
+                      <RadioGroupItem value={opt.value} id={opt.value} />
+                      <Label htmlFor={opt.value} className="text-xs sm:text-sm cursor-pointer flex-1">
+                        {opt.text}
+                      </Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              )}
               <Progress value={progress} className="h-1.5 mt-2 bg-muted" />
+              <p className="text-xs text-muted-foreground">
+                Question {currentQuestion + 1} of {questions.length}
+              </p>
             </div>
           </div>
         </CardContent>
@@ -176,12 +300,12 @@ const DailyCheckIn = () => {
 
       <div className="flex justify-end">
         <Button
-          onClick={handleCheckIn}
+          onClick={handleNext}
           className="bg-gradient-celo hover:opacity-90 shadow-md flex items-center gap-2 min-w-[120px]"
-          disabled={isLoading}
+          disabled={isLoading || !responses[question?.id.toString() || '']}
           size="lg"
         >
-          {isLastQuestion ? "See Insights" : "Next"}
+          {isLastQuestion ? "Complete Check-in" : "Next"}
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
