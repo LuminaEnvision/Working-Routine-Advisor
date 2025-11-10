@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Progress } from "@/components/ui/progress";
-import { Brain, ChevronRight, Loader2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Brain, ChevronRight, Loader2, Info } from "lucide-react";
 import { toast } from "sonner";
 import { useAccount } from "wagmi";
 import { useInsightsPayment } from "@/hooks/use-InsightsPayment";
@@ -15,9 +16,9 @@ import { useCheckIns } from "@/contexts/CheckInContext";
 
 const DailyCheckIn = () => {
   const { address, isConnected } = useAccount();
-  const { status, isLoading } = useInsightsPayment();
+  const { checkIns, addCheckIn, getPreviousCheckIn, getHistoricalData } = useCheckIns();
+  const { status, isLoading } = useInsightsPayment(checkIns.length);
   const navigate = useNavigate();
-  const { addCheckIn, getPreviousCheckIn, getHistoricalData } = useCheckIns();
   
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
@@ -220,6 +221,12 @@ const DailyCheckIn = () => {
             </div>
           </CardContent>
         </Card>
+        <Alert className="border-primary/20 bg-primary/5">
+          <Info className="h-4 w-4 text-primary" />
+          <AlertDescription className="text-xs sm:text-sm">
+            This may take a moment — don't go too far while we analyze your stuff! We promise to improve in the future. 🚀
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -238,6 +245,12 @@ const DailyCheckIn = () => {
             </div>
           </CardContent>
         </Card>
+        <Alert className="border-primary/20 bg-primary/5">
+          <Info className="h-4 w-4 text-primary" />
+          <AlertDescription className="text-xs sm:text-sm">
+            This may take a moment - don't go too far while we analyze your stuff! We promise to improve in the future. 🚀
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }

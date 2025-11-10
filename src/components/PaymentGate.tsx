@@ -35,7 +35,7 @@ interface PaymentGateProps {
 }
 
 export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps) => {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId: wagmiChainId } = useAccount();
   const { chainId, isOnCorrectChain, ensureCorrectChain } = useChainManager();
   const { status, isLoading, submitCheckin, isProcessing, checkCooldown } = useInsightsPayment();
   const navigate = useNavigate();
@@ -137,11 +137,13 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
         setShowConfirmDialog(false);
         return;
       }
-      // Wait for chain switch to complete
+      // Wait for chain switch to complete and state to update
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Final check - if still not on correct chain, abort
-      if (chainId !== 42220) {
+      // Final check - get fresh chainId from wagmi (reactive) instead of closure
+      // Use wagmiChainId which is reactive and will have the updated value
+      const currentChainId = wagmiChainId || chainId;
+      if (currentChainId !== 42220) {
         toast.error('Still not on Celo network. Please switch manually and try again.');
         setShowConfirmDialog(false);
         return;
@@ -186,6 +188,10 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
       toast.success('Payment successful!', {
         description: `Transaction: ${txHash}`,
       });
+
+      // Wait a bit for contract state to update, then refetch
+      // The submitCheckin already calls refetch, but we'll wait a bit more to ensure state is updated
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
       // Call onPaymentComplete - it will handle analysis, saving to React state, and navigation
       // Don't navigate here - let the parent component handle it after analysis completes

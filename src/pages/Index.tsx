@@ -16,11 +16,18 @@ interface CheckInData {
 }
 
 const Index = () => {
-  const { isConnected } = useAccount();
-  const { status } = useInsightsPayment();
+  const { isConnected, address } = useAccount();
   const navigate = useNavigate();
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [checkIns, setCheckIns] = useState<CheckInData[]>([]);
+  const { status, refetchStatus } = useInsightsPayment(checkIns.length);
+  
+  // Refetch check-in count when component mounts or address changes
+  useEffect(() => {
+    if (isConnected && address) {
+      refetchStatus();
+    }
+  }, [isConnected, address, refetchStatus]);
 
   // Load check-in history from localStorage
   useEffect(() => {

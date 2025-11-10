@@ -2,12 +2,25 @@ import { useAccount } from "wagmi";
 import { Card, CardContent, CardHeader, CardDescription, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 import { WalletConnect } from "@/components/WalletConnect";
 import { useInsightsPayment } from "@/hooks/use-InsightsPayment";
+import { useChainManager } from "@/hooks/useChainManager";
+import { useCheckIns } from "@/contexts/CheckInContext";
+import { celo } from "wagmi/chains";
 
 const Profile = () => {
-  const { address, isConnected } = useAccount();
-  const { status } = useInsightsPayment();
+  const { address, isConnected, chainId } = useAccount();
+  const { checkIns } = useCheckIns();
+  const { status, refetchStatus } = useInsightsPayment(checkIns.length);
+  const { isOnCorrectChain, chainId: detectedChainId, ensureCorrectChain } = useChainManager();
+  
+  // Refetch check-in count when component mounts or address changes
+  useEffect(() => {
+    if (isConnected && address) {
+      refetchStatus();
+    }
+  }, [isConnected, address, refetchStatus]);
 
   return (
     <div className="space-y-6 py-6">
@@ -32,6 +45,38 @@ const Profile = () => {
               <p className="font-mono text-sm break-all">
                 {isConnected && address ? address : "Not connected"}
               </p>
+              {isConnected && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs text-muted-foreground">Network</p>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={isOnCorrectChain ? "default" : "destructive"}>
+                      {chainId || detectedChainId 
+                        ? `Chain ID: ${chainId || detectedChainId}` 
+                        : "Chain not detected"}
+                    </Badge>
+                    {isOnCorrectChain && (
+                      <Badge variant="outline" className="text-xs">
+                        {celo.name}
+                      </Badge>
+                    )}
+                    {!isOnCorrectChain && chainId && (
+                      <Badge variant="destructive" className="text-xs">
+                        Wrong Network
+                      </Badge>
+                    )}
+                  </div>
+                  {!isOnCorrectChain && chainId && (
+                    <Button
+                      onClick={ensureCorrectChain}
+                      size="sm"
+                      variant="default"
+                      className="mt-2 w-full"
+                    >
+                      Switch to Celo
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
             <Separator />

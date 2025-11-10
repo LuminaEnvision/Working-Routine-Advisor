@@ -193,24 +193,46 @@ export async function generateDailyQuestions(
   const hour = currentTime.getHours();
   const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
 
+  // Extract previous responses to ensure variation
+  const previousResponses = previousCheckIn?.responses 
+    ? Object.values(previousCheckIn.responses).map(r => ({
+        questionId: r.questionId,
+        selectedOption: r.selectedOption,
+        score: r.score
+      }))
+    : [];
+  
+  const previousAnswers = previousCheckIn?.answers || {};
+  const previousCategories = previousCheckIn?.questions?.map(q => q.category) || [];
+
   const prompt = `You are a health and productivity coach. Generate exactly 6 multiple-choice questions for a ${timeOfDay} check-in.
 
 CONTEXT:
 - Current time: ${timeOfDay}
-- Previous check-in data: ${previousCheckIn ? JSON.stringify(previousCheckIn) : 'No previous data'}
+- Previous check-in data: ${previousCheckIn ? JSON.stringify({
+    answers: previousAnswers,
+    categories: previousCategories,
+    responses: previousResponses
+  }) : 'No previous data'}
 
 REQUIREMENTS:
 1. Questions must be relevant to ${timeOfDay} (e.g., morning: sleep quality, breakfast; evening: stress levels, dinner)
-2. If previous data shows issues, create follow-up questions (e.g., poor sleep last time → ask about sleep improvements attempted)
-3. Cover these key areas across the 6 questions:
+2. **IMPORTANT: At least ONE question must be different from the previous check-in** - either:
+   - Ask about a different aspect of the same category (e.g., if you asked about sleep duration before, ask about sleep quality now)
+   - Ask a follow-up question based on their previous response (e.g., if they reported poor sleep, ask what they tried to improve it)
+   - Ask about a different category entirely
+   - Vary the wording or focus of at least one question
+3. If previous data shows issues, create follow-up questions (e.g., poor sleep last time → ask about sleep improvements attempted)
+4. Cover these key areas across the 6 questions:
    - Sleep/Energy levels
    - Nutrition/Meals
    - Physical activity
    - Mental well-being/Stress
    - Hydration
    - Work productivity/Focus
-4. Each question must have 4 answer options
-5. Options should range from poor to excellent habits
+5. Each question must have 4 answer options
+6. Options should range from poor to excellent habits
+7. **Ensure variation**: Make sure at least one question is noticeably different from the previous check-in to keep it engaging
 
 FORMAT YOUR RESPONSE AS JSON:
 {
@@ -952,25 +974,77 @@ function getMockInsights(checkIns: CheckInData[]): InsightResponse {
   // Analyze recent check-ins (last 7)
   const recent = checkIns.slice(-7);
   
-  // Analyze sleep patterns
-  const sleepAnswers = recent.map(c => c.answers[1] || '').filter(Boolean);
-  const lowSleep = sleepAnswers.filter(s => s === '<5' || s === '5-7').length;
-  const goodSleep = sleepAnswers.filter(s => s === '7-9').length;
+  // Helper function to find answers by category or question ID
+  const getAnswersByCategory = (checkIns: CheckInData[], category: string): string[] => {
+    return checkIns
+      .map(c => {
+        // Try to find by category in questions array
+        if (c.questions) {
+          const question = c.questions.find(q => q.category === category);
+          if (question) {
+            const response = c.responses?.[question.id.toString()];
+            if (response) {
+              return question.options.find(opt => opt.value === response.selectedOption)?.text || '';
+            }
+          }
+        }
+        // Fallback: try to find by string key (legacy format)
+        // Check all answer keys for values that match the category pattern
+        return Object.values(c.answers).find(v => v && typeof v === 'string') || '';
+      })
+      .filter(Boolean);
+  };
+
+  // Helper function to find answers by question ID (string key)
+  const getAnswersByQuestionId = (checkIns: CheckInData[], questionId: string): string[] => {
+    return checkIns
+      .map(c => c.answers[questionId] || '')
+      .filter(Boolean);
+  };
+
+  // Analyze sleep patterns - look for sleep-related answers
+  const sleepAnswers = getAnswersByCategory(recent, 'sleep').length > 0
+    ? getAnswersByCategory(recent, 'sleep')
+    : getAnswersByQuestionId(recent, '1'); // Fallback to question ID "1"
+  const lowSleep = sleepAnswers.filter(s => 
+    s.includes('<5') || s.includes('5-6') || s.includes('Less than 5')
+  ).length;
+  const goodSleep = sleepAnswers.filter(s => 
+    s.includes('7-8') || s.includes('More than 8') || s.includes('7-9')
+  ).length;
   
-  // Analyze exercise patterns
-  const exerciseAnswers = recent.map(c => c.answers[3] || '').filter(Boolean);
-  const noExercise = exerciseAnswers.filter(e => e === 'No').length;
-  const hasExercise = exerciseAnswers.filter(e => e !== 'No').length;
+  // Analyze exercise patterns - look for activity-related answers
+  const exerciseAnswers = getAnswersByCategory(recent, 'activity').length > 0
+    ? getAnswersByCategory(recent, 'activity')
+    : getAnswersByQuestionId(recent, '4'); // Fallback to question ID "4"
+  const noExercise = exerciseAnswers.filter(e => 
+    e.includes('No movement') || e === 'No' || e.includes('No exercise')
+  ).length;
+  const hasExercise = exerciseAnswers.filter(e => 
+    !e.includes('No movement') && e !== 'No' && !e.includes('No exercise')
+  ).length;
   
-  // Analyze meal patterns
-  const mealAnswers = recent.map(c => c.answers[4] || '').filter(Boolean);
-  const lowMeals = mealAnswers.filter(m => m === '1' || m === '2').length;
-  const goodMeals = mealAnswers.filter(m => m === '3' || m === '4+').length;
+  // Analyze meal patterns - look for nutrition-related answers
+  const mealAnswers = getAnswersByCategory(recent, 'nutrition').length > 0
+    ? getAnswersByCategory(recent, 'nutrition')
+    : getAnswersByQuestionId(recent, '3'); // Fallback to question ID "3"
+  const lowMeals = mealAnswers.filter(m => 
+    m.includes('0-1') || m.includes('1-2') || m.includes('Less than')
+  ).length;
+  const goodMeals = mealAnswers.filter(m => 
+    m.includes('3') || m.includes('4+') || m.includes('Balanced') || m.includes('nutritious')
+  ).length;
   
-  // Analyze focus patterns
-  const focusAnswers = recent.map(c => c.answers[5] || '').filter(Boolean);
-  const lowFocus = focusAnswers.filter(f => f === 'Not at all' || f === 'Somewhat').length;
-  const goodFocus = focusAnswers.filter(f => f === 'Mostly' || f === 'Completely').length;
+  // Analyze focus patterns - look for productivity-related answers
+  const focusAnswers = getAnswersByCategory(recent, 'productivity').length > 0
+    ? getAnswersByCategory(recent, 'productivity')
+    : getAnswersByQuestionId(recent, '6'); // Fallback to question ID "6"
+  const lowFocus = focusAnswers.filter(f => 
+    f.includes('Not at all') || f.includes('Somewhat') || f.includes('0-1') || f.includes('Low')
+  ).length;
+  const goodFocus = focusAnswers.filter(f => 
+    f.includes('Mostly') || f.includes('Completely') || f.includes('4-5') || f.includes('6+') || f.includes('High')
+  ).length;
   
   // Build insights based on patterns
   const insights: string[] = [];
