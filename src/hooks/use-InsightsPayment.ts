@@ -20,6 +20,8 @@ type SubscriptionStatus = {
   checkinCount: number;
   checkinsUntilReward: number;
   nextRewardAt: number; // Check-in number when next reward will be given
+  dailyCheckinCount: number; // Number of check-ins today (0-2)
+  remainingCheckinsToday: number; // Remaining check-ins available today (0-2)
 };
 
 const defaultStatus: SubscriptionStatus = {
@@ -31,6 +33,8 @@ const defaultStatus: SubscriptionStatus = {
   checkinCount: 0,
   checkinsUntilReward: 5,
   nextRewardAt: 5,
+  dailyCheckinCount: 0,
+  remainingCheckinsToday: 2,
 };
 
 export const useInsightsPayment = (fallbackCheckInCount?: number) => {
@@ -102,6 +106,9 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
   const [lastCheckinTimestamp, setLastCheckinTimestamp] = useState<number>(0);
   const [checkinCount, setCheckinCount] = useState<number>(0);
   const [checkinsUntilReward, setCheckinsUntilReward] = useState<number>(5);
+  const [dailyCheckinCount, setDailyCheckinCount] = useState<number>(0);
+  const [remainingCheckinsToday, setRemainingCheckinsToday] = useState<number>(2);
+  const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
 
   // Fetch contract data using publicClient (more reliable than useContractRead)
   useEffect(() => {
@@ -112,6 +119,9 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
       setLastCheckinTimestamp(0);
       setCheckinCount(0);
       setCheckinsUntilReward(5);
+      setDailyCheckinCount(0);
+      setRemainingCheckinsToday(2);
+      setCooldownRemaining(0);
       setIsLoading(false);
       return;
     }
@@ -120,7 +130,7 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
       setIsLoading(true);
       try {
         // Core functions that should always exist
-        const [subscribed, expiry, cooldown, lastCheckin] = await Promise.all([
+        const [subscribed, expiry, cooldown, lastCheckin, cooldownRemainingSeconds, dailyCount, remainingToday] = await Promise.all([
           publicClient.readContract({
             address: INSIGHTS_PAYMENT_ADDRESS,
             abi: InsightsPaymentArtifact.abi,
@@ -145,13 +155,33 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
             functionName: "lastCheckin",
             args: [address],
           }).catch(() => 0n),
+          publicClient.readContract({
+            address: INSIGHTS_PAYMENT_ADDRESS,
+            abi: InsightsPaymentArtifact.abi,
+            functionName: "getCooldownRemaining",
+            args: [address],
+          }).catch(() => 0n),
+          publicClient.readContract({
+            address: INSIGHTS_PAYMENT_ADDRESS,
+            abi: InsightsPaymentArtifact.abi,
+            functionName: "getDailyCheckinCount",
+            args: [address],
+          }).catch(() => 0n),
+          publicClient.readContract({
+            address: INSIGHTS_PAYMENT_ADDRESS,
+            abi: InsightsPaymentArtifact.abi,
+            functionName: "getRemainingCheckinsToday",
+            args: [address],
+          }).catch(() => 2n),
         ]);
 
         setIsSubscribed(subscribed as boolean);
         setSubscriptionExpiry(Number(expiry));
-        // TESTING: Disable cooldown check - always allow check-ins
-        setIsInCooldown(false); // cooldown as boolean - DISABLED FOR TESTING
+        setIsInCooldown(cooldown as boolean);
         setLastCheckinTimestamp(Number(lastCheckin));
+        setCooldownRemaining(Number(cooldownRemainingSeconds));
+        setDailyCheckinCount(Number(dailyCount));
+        setRemainingCheckinsToday(Number(remainingToday));
 
         // New functions that may not exist in old contracts - use defaults if missing
         let contractCountAvailable = false;
@@ -197,6 +227,9 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
         setLastCheckinTimestamp(0);
         setCheckinCount(0);
         setCheckinsUntilReward(5);
+        setDailyCheckinCount(0);
+        setRemainingCheckinsToday(2);
+        setCooldownRemaining(0);
       } finally {
         setIsLoading(false);
       }
@@ -218,14 +251,16 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
       return defaultStatus;
     }
 
-    // TESTING: Disable cooldown check - always allow check-ins
-    const cooldown = false; // isInCooldown - DISABLED FOR TESTING
+    const cooldown = isInCooldown;
     const lastCheckinValue = lastCheckinTimestamp;
     
-    // Calculate hours until next check-in
+    // Calculate hours until next check-in (5 hour cooldown)
     let hoursUntilNextCheckin = 0;
-    if (cooldown && lastCheckinValue > 0) {
-      const cooldownEnd = lastCheckinValue + 24 * 60 * 60; // 24 hours in seconds
+    if (cooldownRemaining > 0) {
+      hoursUntilNextCheckin = Math.max(0, Math.ceil(cooldownRemaining / 3600));
+    } else if (cooldown && lastCheckinValue > 0) {
+      // Fallback calculation if cooldownRemaining not available
+      const cooldownEnd = lastCheckinValue + 5 * 60 * 60; // 5 hours in seconds
       const now = Math.floor(Date.now() / 1000);
       const secondsRemaining = cooldownEnd - now;
       hoursUntilNextCheckin = Math.max(0, Math.ceil(secondsRemaining / 3600));
@@ -255,8 +290,10 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
       checkinCount,
       checkinsUntilReward: finalCheckinsUntilReward,
       nextRewardAt,
+      dailyCheckinCount,
+      remainingCheckinsToday,
     };
-  }, [address, isSubscribed, subscriptionExpiry, isInCooldown, lastCheckinTimestamp, checkinCount, checkinsUntilReward]);
+  }, [address, isSubscribed, subscriptionExpiry, isInCooldown, lastCheckinTimestamp, checkinCount, checkinsUntilReward, dailyCheckinCount, remainingCheckinsToday, cooldownRemaining]);
 
 
   const submitCheckin = useCallback(
@@ -494,6 +531,18 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
           if (error.message.includes('User rejected') || error.message.includes('user rejected')) {
             throw new Error("Transaction rejected by user");
           }
+          // Check for connector/wallet errors (common in Safari)
+          if (error.message.includes('Connector not found') || error.message.includes('not found')) {
+            const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+            if (isSafari) {
+              throw new Error("Wallet not found. In Safari, please ensure MetaMask is installed and enabled, or use WalletConnect to connect a mobile wallet.");
+            }
+            throw new Error("Wallet not found. Please connect your wallet and try again.");
+          }
+          // Check for account errors
+          if (error.message.includes('Account') || error.message.includes('account')) {
+            throw new Error("Account not available. Please reconnect your wallet and try again.");
+          }
           throw error;
         }
         throw new Error("Failed to submit check-in. Please try again.");
@@ -504,12 +553,47 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
     [address, isConnected, getWalletClient, getAccount, refetch]
   );
 
-  // TESTING: Disable cooldown check - always return true
+  // Check cooldown and daily limit
   const checkCooldown = useCallback(async (): Promise<boolean> => {
-    // TESTING: Always allow check-ins (cooldown disabled for testing)
-    // Note: The smart contract still enforces cooldown, so this only bypasses frontend checks
-    return true;
-  }, []);
+    if (!address) return false;
+    
+    try {
+      // Check if in cooldown
+      const inCooldown = await publicClient.readContract({
+        address: INSIGHTS_PAYMENT_ADDRESS,
+        abi: InsightsPaymentArtifact.abi,
+        functionName: "isInCooldown",
+        args: [address],
+      }).catch((err) => {
+        console.warn("Failed to check isInCooldown, assuming false:", err);
+        return false; // If function doesn't exist, assume not in cooldown
+      });
+      
+      // Check remaining check-ins today
+      const remaining = await publicClient.readContract({
+        address: INSIGHTS_PAYMENT_ADDRESS,
+        abi: InsightsPaymentArtifact.abi,
+        functionName: "getRemainingCheckinsToday",
+        args: [address],
+      }).catch((err) => {
+        console.warn("Failed to check getRemainingCheckinsToday, assuming 2:", err);
+        return 2n; // If function doesn't exist, assume full allowance
+      });
+      
+      console.log("Contract check result:", {
+        inCooldown,
+        remaining: Number(remaining),
+        canCheckIn: !inCooldown && Number(remaining) > 0
+      });
+      
+      // Can check in if not in cooldown AND has remaining check-ins
+      return !inCooldown && Number(remaining) > 0;
+    } catch (error) {
+      console.error("Failed to check cooldown:", error);
+      // On error, allow check-in attempt (contract will enforce)
+      return true;
+    }
+  }, [address]);
 
 
   return {

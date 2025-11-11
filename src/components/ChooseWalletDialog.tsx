@@ -32,60 +32,121 @@ export const ChooseWalletDialog = ({
   // Debug: Log available connectors
   useEffect(() => {
     if (open) {
+      const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      console.log('Browser:', isSafari ? 'Safari' : 'Other');
       console.log('Available connectors:', connectors.map(c => ({
         id: c.id,
         name: c.name,
         ready: c.ready,
-        type: c.type
+        type: c.type,
+        canConnect: isSafari || c.ready
       })));
+      console.log('window.ethereum available:', typeof window !== 'undefined' && !!window.ethereum);
+      if (typeof window !== 'undefined' && window.ethereum) {
+        console.log('window.ethereum.isMetaMask:', (window.ethereum as any).isMetaMask);
+      }
     }
   }, [open, connectors]);
 
+  // Detect Safari for more lenient connector filtering
+  const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  
   // Find Farcaster, MetaMask, and External wallet connectors
   // More flexible matching - check name, id, and type
+  // In Safari, be more lenient with ready check - show connectors even if not immediately ready
   const farcasterConnector = connectors.find(
-    (c) => c.ready && (
+    (c) => (isSafari || c.ready) && (
       c.name?.toLowerCase().includes("farcaster") ||
       c.id.toLowerCase().includes("farcaster") ||
       c.name === "Farcaster Wallet"
     )
   );
   // Find MetaMask - check multiple ways
+  // Prioritize MetaMaskConnector over InjectedConnector to avoid duplicates
   const metaMaskConnector = connectors.find(
     (c) => {
-      if (!c.ready) return false;
+      // In Safari, show MetaMask connector even if not ready
+      if (!isSafari && !c.ready) return false;
       const name = c.name?.toLowerCase() || '';
       const id = c.id.toLowerCase();
-      // Check if it's MetaMask connector or injected connector with MetaMask
-      return (
-        name.includes("metamask") ||
-        id.includes("metamask") ||
-        (c.type === "injected" && typeof window !== 'undefined' && window.ethereum?.isMetaMask && name !== "farcaster wallet")
-      );
+      // Prefer connectors with "metamask" in id/name over generic injected connectors
+      // This ensures we pick MetaMaskConnector over InjectedConnector when both exist
+      const isMetaMaskSpecific = name.includes("metamask") || id.includes("metamask");
+      const isInjectedWithMetaMask = c.type === "injected" && typeof window !== 'undefined' && window.ethereum?.isMetaMask && name !== "farcaster wallet";
+      
+      // If we find a MetaMask-specific connector, use it
+      if (isMetaMaskSpecific) return true;
+      // Otherwise, only use injected connector if no MetaMask-specific connector exists
+      return isInjectedWithMetaMask;
     }
   );
   const walletConnectConnector = connectors.find(
-    (c) => c.ready && (
+    (c) => (isSafari || c.ready) && (
       c.name?.toLowerCase().includes("walletconnect") ||
       c.id.toLowerCase().includes("walletconnect") ||
       c.type === "walletConnect"
     )
   );
   
-  // Other external connectors (excluding Safe and already listed ones)
+  // Hide "Injected Wallet" if MetaMask is available (MetaMask IS an injected wallet)
+  // Only show it as a fallback if MetaMask isn't available
+  // Also hide Safe and other connectors we don't want to show
   const otherConnectors = connectors.filter(
-    (c) =>
-      c.ready &&
-      c !== farcasterConnector &&
-      c !== metaMaskConnector &&
-      c !== walletConnectConnector &&
-      !c.name?.toLowerCase().includes("safe") &&
-      !c.id.toLowerCase().includes("safe")
+    (c) => {
+      // Skip if already shown as a main option
+      if (c === farcasterConnector || c === metaMaskConnector || c === walletConnectConnector) {
+        return false;
+      }
+      
+      // Skip Safe connector
+      if (c.name?.toLowerCase().includes("safe") || c.id.toLowerCase().includes("safe")) {
+        return false;
+      }
+      
+      // Hide "Injected Wallet" if MetaMask is available
+      // MetaMask is an injected wallet, so we don't need both
+      // Also hide any injected connector that would show as MetaMask
+      if (metaMaskConnector) {
+        const isInjected = c.type === 'injected' || c.id === 'injected' || c.name === 'Injected' || c.name === 'Injected Wallet';
+        const wouldShowAsMetaMask = isInjected && typeof window !== 'undefined' && window.ethereum?.isMetaMask;
+        if (isInjected || wouldShowAsMetaMask) {
+          return false;
+        }
+      }
+      
+      // Only show if ready (or Safari with lenient check)
+      return isSafari || c.ready;
+    }
   );
 
   const handleSelectWallet = async (connectorId: string) => {
     const connector = connectors.find((c) => c.id === connectorId);
-    if (!connector) return;
+    if (!connector) {
+      const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      if (isSafari) {
+        toast.error(
+          "Wallet not found. In Safari, please install MetaMask extension or use WalletConnect to connect a mobile wallet.",
+          { duration: 6000 }
+        );
+      } else {
+        toast.error("Wallet connector not found. Please try another wallet option.");
+      }
+      return;
+    }
+
+    // Check if connector is ready (especially important for Safari)
+    if (!connector.ready) {
+      const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      if (isSafari && connector.name?.toLowerCase().includes('metamask')) {
+        toast.error(
+          "MetaMask not detected in Safari. Please install MetaMask extension or use WalletConnect instead.",
+          { duration: 6000 }
+        );
+      } else {
+        toast.error(`${connector.name} is not available. Please install the wallet extension or try another option.`);
+      }
+      return;
+    }
 
     setSelectedWallet(connectorId);
     setIsConnecting(true);
@@ -102,8 +163,16 @@ export const ChooseWalletDialog = ({
           },
           onError: (error) => {
             const errorMessage = error?.message ?? "Failed to connect wallet";
-            if (!errorMessage.includes("reset") && !errorMessage.includes("rejected")) {
-              toast.error(errorMessage);
+            if (!errorMessage.includes("reset") && !errorMessage.includes("rejected") && !errorMessage.includes("User rejected")) {
+              const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+              if (isSafari && errorMessage.includes("Connector not found")) {
+                toast.error(
+                  "No wallet found. In Safari, please install MetaMask or use WalletConnect to connect a mobile wallet.",
+                  { duration: 6000 }
+                );
+              } else {
+                toast.error(errorMessage);
+              }
             }
             setIsConnecting(false);
             setSelectedWallet(null);
@@ -112,8 +181,16 @@ export const ChooseWalletDialog = ({
       );
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Connection failed";
-      if (!errorMessage.includes("reset") && !errorMessage.includes("rejected")) {
-        toast.error(errorMessage);
+      if (!errorMessage.includes("reset") && !errorMessage.includes("rejected") && !errorMessage.includes("User rejected")) {
+        const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        if (isSafari && (errorMessage.includes("Connector not found") || errorMessage.includes("not found"))) {
+          toast.error(
+            "No wallet found. In Safari, please install MetaMask or use WalletConnect to connect a mobile wallet.",
+            { duration: 6000 }
+          );
+        } else {
+          toast.error(errorMessage);
+        }
       }
       setIsConnecting(false);
       setSelectedWallet(null);
@@ -142,14 +219,20 @@ export const ChooseWalletDialog = ({
           {/* Debug: Show all connectors if none found */}
           {!farcasterConnector && !metaMaskConnector && !walletConnectConnector && otherConnectors.length === 0 && (
             <div className="p-4 border border-dashed border-muted rounded-lg">
-              <p className="text-xs text-muted-foreground mb-2">No connectors available. Available connectors:</p>
-              <div className="space-y-1 text-xs">
-                {connectors.map((c) => (
-                  <div key={c.id} className="text-muted-foreground">
-                    {c.name || 'Unknown'} ({c.id}) - Ready: {c.ready ? 'Yes' : 'No'} - Type: {c.type}
-                  </div>
-                ))}
-              </div>
+              <p className="text-xs text-muted-foreground mb-2">
+                {isSafari 
+                  ? "Safari detected: MetaMask may not work due to browser restrictions. Try WalletConnect or install MetaMask and grant permissions."
+                  : "No connectors available. Available connectors:"}
+              </p>
+              {!isSafari && (
+                <div className="space-y-1 text-xs">
+                  {connectors.map((c) => (
+                    <div key={c.id} className="text-muted-foreground">
+                      {c.name || 'Unknown'} ({c.id}) - Ready: {c.ready ? 'Yes' : 'No'} - Type: {c.type}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -217,7 +300,11 @@ export const ChooseWalletDialog = ({
                   </div>
                   <div>
                     <p className="font-semibold text-sm sm:text-base">MetaMask</p>
-                    <p className="text-xs text-muted-foreground">Browser extension wallet</p>
+                    <p className="text-xs text-muted-foreground">
+                      {isSafari && !metaMaskConnector.ready 
+                        ? "May not work in Safari - try WalletConnect" 
+                        : "Browser extension wallet"}
+                    </p>
                   </div>
                 </div>
                 {isConnected && connector?.id === metaMaskConnector.id && (
@@ -254,7 +341,7 @@ export const ChooseWalletDialog = ({
                   </div>
                   <div>
                     <p className="font-semibold text-sm sm:text-base">WalletConnect</p>
-                    <p className="text-xs text-muted-foreground">Mobile & desktop wallets</p>
+                    <p className="text-xs text-muted-foreground">Connect via QR code (works with many wallets)</p>
                   </div>
                 </div>
                 {isConnected && connector?.id === walletConnectConnector.id && (
@@ -267,7 +354,7 @@ export const ChooseWalletDialog = ({
             </button>
           )}
 
-          {/* Other External Wallets */}
+          {/* Other External Wallets (fallback only - should be rare) */}
           {otherConnectors.length > 0 && otherConnectors.map((c) => (
             <button
               key={c.id}

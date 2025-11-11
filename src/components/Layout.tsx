@@ -1,7 +1,9 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Brain, CheckCircle2, Home, Lightbulb, User } from "lucide-react";
+import { CheckCircle2, Home, Lightbulb, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { WalletMenu } from "@/components/WalletMenu";
+import { Logo } from "@/components/Logo";
 
 interface LayoutProps {
   children: ReactNode;
@@ -22,14 +24,16 @@ const Layout = ({ children }: LayoutProps) => {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-lg border-b border-border">
         <div className="container max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-3 group">
-            <div className="w-12 h-12 rounded-xl bg-gradient-celo flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform shadow-lg">
-              <Brain className="w-7 h-7 text-white" />
-            </div>
-            <span className="text-lg sm:text-xl font-bold text-foreground">
-              Routine Advisor
+          <Link to="/" className="flex items-center gap-2 sm:gap-3 group">
+            <Logo size="md" className="group-hover:scale-110 transition-transform" />
+            <span className="text-lg sm:text-xl font-bold text-foreground tracking-tight">
+              WRA
             </span>
           </Link>
+          {/* Wallet Menu - Top Right */}
+          <div className="flex items-center">
+            <WalletMenu />
+          </div>
         </div>
       </header>
 

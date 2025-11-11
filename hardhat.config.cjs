@@ -1,5 +1,6 @@
 require("@nomicfoundation/hardhat-toolbox");
-require("@nomicfoundation/hardhat-verify");
+// Note: hardhat-verify is ESM-only, so we'll load it dynamically if needed
+// require("@nomicfoundation/hardhat-verify");
 require("dotenv").config();
 
 const {
@@ -21,6 +22,12 @@ module.exports = {
         runs: 200,
       },
     },
+  },
+  paths: {
+    sources: "./contracts",
+    tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts",
   },
   defaultNetwork: "hardhat",
   networks: {

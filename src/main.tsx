@@ -13,11 +13,22 @@ if (typeof window !== "undefined") {
 
 // Initialize Farcaster SDK early (before React renders)
 // This is required for Farcaster Mini Apps
-initializeFarcasterSDK().catch((error) => {
-  console.warn("Farcaster SDK initialization failed (running in standalone mode):", error);
-});
+// Wrap in try-catch to ensure app loads even if initialization fails
+try {
+  initializeFarcasterSDK().catch((error) => {
+    console.warn("Farcaster SDK initialization failed (running in standalone mode):", error);
+  });
+} catch (error) {
+  console.warn("Farcaster SDK initialization error (app will continue):", error);
+}
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+// Ensure root element exists before rendering
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  throw new Error("Root element not found. Make sure index.html has a div with id='root'");
+}
+
+ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>

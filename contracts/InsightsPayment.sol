@@ -6,22 +6,23 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+// Interface for InsightToken minting
+interface IInsightToken {
+    function mint(address to, uint256 amount) external;
+}
+
 /// @title InsightsPayment - Subscription & Check-in System (Celo)
 contract InsightsPayment is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    // Interface for InsightToken minting
-    interface IInsightToken {
-        function mint(address to, uint256 amount) external;
-    }
-
     uint256 public constant CHECKIN_FEE = 0.1 ether; // 0.1 CELO
     uint256 public constant MONTHLY_SUBSCRIPTION = 6_900_000_000_000_000_000; // 6.9 cUSD
     uint256 public constant SUBSCRIPTION_DURATION = 30 days;
-    uint256 public constant CHECKIN_COOLDOWN = 1 days;
+    uint256 public constant CHECKIN_COOLDOWN = 5 hours; // 5 hours between check-ins
+    uint256 public constant MAX_CHECKINS_PER_DAY = 2; // Maximum 2 check-ins per day
 
     IERC20 public immutable cUSD;
-    IERC20 public immutable insightToken;
+    IInsightToken public immutable insightToken;
 
     uint256 public constant REWARD_CHECKIN_COUNT = 5; // Minimum check-ins for reward
     uint256 public constant REWARD_AMOUNT = 50 * 10**18; // 50 INSIGHT tokens
@@ -29,6 +30,8 @@ contract InsightsPayment is Ownable, ReentrancyGuard {
     mapping(address => uint256) public subscriptionExpiry;
     mapping(address => uint256) public lastCheckin;
     mapping(address => uint256) public checkinCount; // Track total check-ins per user
+    mapping(address => uint256) public dailyCheckinCount; // Track check-ins today
+    mapping(address => uint256) public lastCheckinDay; // Track which day (UTC) the last check-in was on
 
     event Checkin(address indexed user, string ipfsHash);
     event Subscribed(address indexed user, uint256 until);
@@ -42,15 +45,33 @@ contract InsightsPayment is Ownable, ReentrancyGuard {
         require(_cUSD != address(0), "cUSD address zero");
         require(_insightToken != address(0), "InsightToken address zero");
         cUSD = IERC20(_cUSD);
-        insightToken = IERC20(_insightToken);
+        insightToken = IInsightToken(_insightToken);
+    }
+
+    /// @notice Get the current UTC day (days since epoch)
+    function getCurrentDay() internal view returns (uint256) {
+        return block.timestamp / 1 days;
     }
 
     /// @notice User submits daily check-in with IPFS-stored data
     /// @param ipfsHash IPFS CID (Content Identifier) hash of the check-in data stored on IPFS
     function submitCheckin(string calldata ipfsHash) external payable nonReentrant {
         bool subscribed = block.timestamp < subscriptionExpiry[msg.sender];
-        bool canCheckin = block.timestamp > lastCheckin[msg.sender] + CHECKIN_COOLDOWN;
-        require(canCheckin, "You already checked in today");
+        uint256 currentDay = getCurrentDay();
+        
+        // Check if we need to reset daily count (new day)
+        if (lastCheckinDay[msg.sender] != currentDay) {
+            dailyCheckinCount[msg.sender] = 0;
+            lastCheckinDay[msg.sender] = currentDay;
+        }
+        
+        // Check daily limit (2 check-ins per day)
+        require(dailyCheckinCount[msg.sender] < MAX_CHECKINS_PER_DAY, "Daily limit reached: 2 check-ins per day");
+        
+        // Check cooldown (5 hours between check-ins)
+        // If user has never checked in (lastCheckin == 0), they can always check in
+        bool canCheckin = lastCheckin[msg.sender] == 0 || block.timestamp >= lastCheckin[msg.sender] + CHECKIN_COOLDOWN;
+        require(canCheckin, "Please wait 5 hours between check-ins");
 
         if (subscribed) {
             require(msg.value == 0, "Already subscribed - no CELO needed");
@@ -65,14 +86,16 @@ contract InsightsPayment is Ownable, ReentrancyGuard {
         }
 
         lastCheckin[msg.sender] = block.timestamp;
+        dailyCheckinCount[msg.sender] += 1;
         checkinCount[msg.sender] += 1;
         
-        // Distribute recurring reward: 50 $INSIGHT every 5 check-ins for subscribed users
+        // Distribute recurring reward: 50 $INSIGHT every 5 check-ins for ALL users
         // Reward triggers when checkinCount is divisible by 5 (5, 10, 15, 20, etc.)
-        if (subscribed && checkinCount[msg.sender] % REWARD_CHECKIN_COUNT == 0) {
+        // Subscription is optional - it just removes the fee, rewards are for everyone
+        if (checkinCount[msg.sender] % REWARD_CHECKIN_COUNT == 0) {
             // Mint tokens directly to user's wallet (Farcaster compatible)
             // Note: This contract must have MINTER_ROLE on InsightToken
-            IInsightToken(insightToken).mint(msg.sender, REWARD_AMOUNT);
+            insightToken.mint(msg.sender, REWARD_AMOUNT);
             emit RewardDistributed(msg.sender, REWARD_AMOUNT);
         }
         
@@ -126,7 +149,53 @@ contract InsightsPayment is Ownable, ReentrancyGuard {
     /// @param user Address to check cooldown status for
     /// @return true if user is in cooldown (cannot check in), false if can check in
     function isInCooldown(address user) external view returns (bool) {
-        return block.timestamp <= lastCheckin[user] + CHECKIN_COOLDOWN;
+        // If user has never checked in, they're not in cooldown
+        if (lastCheckin[user] == 0) {
+            return false;
+        }
+        return block.timestamp < lastCheckin[user] + CHECKIN_COOLDOWN;
+    }
+
+    /// @notice Returns the number of seconds remaining in cooldown
+    /// @param user Address to check cooldown for
+    /// @return seconds remaining in cooldown (0 if not in cooldown)
+    function getCooldownRemaining(address user) external view returns (uint256) {
+        // If user has never checked in, no cooldown
+        if (lastCheckin[user] == 0) {
+            return 0;
+        }
+        uint256 cooldownEnd = lastCheckin[user] + CHECKIN_COOLDOWN;
+        if (block.timestamp >= cooldownEnd) {
+            return 0;
+        }
+        return cooldownEnd - block.timestamp;
+    }
+
+    /// @notice Returns the number of check-ins remaining today
+    /// @param user Address to check for
+    /// @return number of check-ins remaining today (0-2)
+    function getRemainingCheckinsToday(address user) external view returns (uint256) {
+        uint256 currentDay = getCurrentDay();
+        // If user has never checked in (lastCheckinDay == 0) or it's a new day, full allowance
+        if (lastCheckinDay[user] == 0 || lastCheckinDay[user] != currentDay) {
+            return MAX_CHECKINS_PER_DAY; // New day or new user, full allowance
+        }
+        uint256 used = dailyCheckinCount[user];
+        if (used >= MAX_CHECKINS_PER_DAY) {
+            return 0;
+        }
+        return MAX_CHECKINS_PER_DAY - used;
+    }
+
+    /// @notice Returns the current day's check-in count for a user
+    /// @param user Address to check for
+    /// @return number of check-ins today (0-2)
+    function getDailyCheckinCount(address user) external view returns (uint256) {
+        uint256 currentDay = getCurrentDay();
+        if (lastCheckinDay[user] != currentDay) {
+            return 0; // New day, no check-ins yet
+        }
+        return dailyCheckinCount[user];
     }
 
     /// @notice Returns the number of check-ins for a user

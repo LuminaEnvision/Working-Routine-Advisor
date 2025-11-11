@@ -1,7 +1,5 @@
-// Lazy import PinataSDK to avoid build errors if not needed
-let PinataSDK: any = null;
-let pinataClient: any = null;
-
+// Use Pinata REST API directly instead of SDK to avoid CommonJS issues
+// This is more reliable for browser environments
 const getPinataClient = async (): Promise<any | null> => {
   const jwt = import.meta.env.VITE_PINATA_JWT;
   
@@ -10,46 +8,29 @@ const getPinataClient = async (): Promise<any | null> => {
     return null;
   }
 
-  if (!PinataSDK) {
-    try {
-      // Dynamic import to avoid build errors
-      const pinataModule = await import('pinata-sdk');
-      PinataSDK = pinataModule.default || pinataModule;
-    } catch (error) {
-      console.warn('Pinata SDK not available. IPFS uploads will be disabled:', error);
-      return null;
-    }
-  }
-
-  if (!pinataClient && PinataSDK) {
-    try {
-      pinataClient = new PinataSDK({
-        pinataJwt: jwt,
-        pinataGateway: import.meta.env.VITE_PINATA_GATEWAY || 'gateway.pinata.cloud',
-      });
-    } catch (error) {
-      console.error('Failed to initialize Pinata client:', error);
-      return null;
-    }
-  }
-
-  return pinataClient;
+  // Return a simple client object that uses Pinata REST API
+  return {
+    jwt,
+    gateway: import.meta.env.VITE_PINATA_GATEWAY || 'gateway.pinata.cloud',
+  };
 };
 
 /**
  * Upload data to IPFS via Pinata
  * @param data - The data to upload (string, object, or File)
- * @returns IPFS hash (CID)
+ * @returns IPFS hash (CID) or empty string if Pinata is not configured
  */
 export const uploadToIPFS = async (data: string | object | File): Promise<string> => {
   const client = await getPinataClient();
   
   if (!client) {
-    throw new Error('Pinata client not initialized. Please set VITE_PINATA_JWT environment variable.');
+    console.warn('Pinata not configured. Skipping IPFS upload. Data will be stored locally only.');
+    return ''; // Return empty string if Pinata is not configured
   }
 
   try {
-    let content: string | File;
+    // Prepare data for upload
+    let content: string | Blob;
     
     if (typeof data === 'string') {
       content = data;
@@ -59,10 +40,41 @@ export const uploadToIPFS = async (data: string | object | File): Promise<string
       content = JSON.stringify(data);
     }
 
-    const result = await client.upload.content(content);
+    // Use Pinata REST API directly
+    const formData = new FormData();
     
-    // Pinata returns an object with IpfsHash or Hash
-    const ipfsHash = result.IpfsHash || result.Hash || result.cid;
+    if (content instanceof File || content instanceof Blob) {
+      formData.append('file', content);
+    } else {
+      // For JSON strings, create a Blob
+      const blob = new Blob([content], { type: 'application/json' });
+      formData.append('file', blob);
+    }
+
+    // Add metadata
+    const metadata = JSON.stringify({
+      name: `checkin-${Date.now()}`,
+    });
+    formData.append('pinataMetadata', metadata);
+
+    // Upload to Pinata
+    const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${client.jwt}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`Pinata API error: ${response.status} - ${errorData}`);
+    }
+
+    const result = await response.json();
+    
+    // Pinata returns an object with IpfsHash
+    const ipfsHash = result.IpfsHash || result.Hash;
     
     if (!ipfsHash) {
       throw new Error('Failed to get IPFS hash from Pinata response');
@@ -71,7 +83,10 @@ export const uploadToIPFS = async (data: string | object | File): Promise<string
     return ipfsHash;
   } catch (error) {
     console.error('IPFS upload failed:', error);
-    throw new Error(`Failed to upload to IPFS: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    // Return empty string on error instead of throwing
+    // This allows the app to continue working without IPFS
+    console.warn('Continuing without IPFS hash. Data will be stored locally only.');
+    return '';
   }
 };
 
