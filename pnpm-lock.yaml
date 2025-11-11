@@ -14,9 +14,6 @@ importers:
       '@farcaster/miniapp-sdk':
         specifier: 0.1.10
         version: 0.1.10(bufferutil@4.0.9)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
-      '@nomiclabs/hardhat-ethers':
-        specifier: 2.2.3
-        version: 2.2.3(ethers@5.7.2(bufferutil@4.0.9)(utf-8-validate@5.0.10))(hardhat@2.27.0(bufferutil@4.0.9)(ts-node@10.9.2(@types/node@24.10.0)(typescript@5.9.3))(typescript@5.9.3)(utf-8-validate@5.0.10))
       '@radix-ui/react-alert-dialog':
         specifier: ^1.1.15
         version: 1.1.15(@types/react@19.2.2)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -105,6 +102,9 @@ importers:
       '@nomicfoundation/hardhat-verify':
         specifier: ^3.0.6
         version: 3.0.6(hardhat@2.27.0(bufferutil@4.0.9)(ts-node@10.9.2(@types/node@24.10.0)(typescript@5.9.3))(typescript@5.9.3)(utf-8-validate@5.0.10))
+      '@nomiclabs/hardhat-ethers':
+        specifier: 2.2.3
+        version: 2.2.3(ethers@5.7.2(bufferutil@4.0.9)(utf-8-validate@5.0.10))(hardhat@2.27.0(bufferutil@4.0.9)(ts-node@10.9.2(@types/node@24.10.0)(typescript@5.9.3))(typescript@5.9.3)(utf-8-validate@5.0.10))
       '@openzeppelin/contracts':
         specifier: ^5.0.2
         version: 5.4.0
