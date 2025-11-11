@@ -20,11 +20,43 @@ interface InsightResponse {
 
 const Recommendations = () => {
   const { address, isConnected } = useAccount();
-  const { status } = useInsightsPayment();
   const { checkIns } = useCheckIns();
+  const { status, refetchStatus } = useInsightsPayment(checkIns.length);
   const [insights, setInsights] = useState<InsightResponse | null>(null);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
+
+  // Refetch check-in count when check-ins change (after new check-in is saved)
+  useEffect(() => {
+    if (isConnected && checkIns.length > 0) {
+      // Delay to ensure contract state has updated after transaction
+      // Also refetch periodically to catch any updates
+      const timer1 = setTimeout(() => {
+        refetchStatus();
+      }, 3000);
+      
+      const timer2 = setTimeout(() => {
+        refetchStatus();
+      }, 5000);
+      
+      const timer3 = setTimeout(() => {
+        refetchStatus();
+      }, 10000);
+      
+      return () => {
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+        clearTimeout(timer3);
+      };
+    }
+  }, [checkIns.length, isConnected, refetchStatus]);
+  
+  // Also refetch when component mounts or address changes
+  useEffect(() => {
+    if (isConnected) {
+      refetchStatus();
+    }
+  }, [isConnected, address, refetchStatus]);
 
   // Get the latest check-in's analysis
   const latestCheckIn = checkIns.length > 0 ? checkIns[checkIns.length - 1] : null;
@@ -146,17 +178,11 @@ const Recommendations = () => {
               <div className="flex items-center justify-between">
                 <span className="text-xs sm:text-sm text-muted-foreground">Total Check-ins</span>
                 <Badge variant="secondary">
-                  <span className="text-xs">{checkIns.length}</span>
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs sm:text-sm text-muted-foreground">Check-in Count</span>
-                <Badge variant="secondary">
                   <span className="text-xs">{status.checkinCount}</span>
                 </Badge>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs sm:text-sm text-muted-foreground">Next Reward</span>
+                <span className="text-xs sm:text-sm text-muted-foreground">Next $INSIGHT Reward</span>
                 <Badge variant="secondary">
                   <span className="text-xs">{status.checkinsUntilReward} check-ins away</span>
                 </Badge>

@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Progress } from "@/components/ui/progress";
-import { Brain, ChevronRight, Loader2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Brain, ChevronRight, Loader2, Info, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useAccount } from "wagmi";
 import { useInsightsPayment } from "@/hooks/use-InsightsPayment";
@@ -15,9 +16,9 @@ import { useCheckIns } from "@/contexts/CheckInContext";
 
 const DailyCheckIn = () => {
   const { address, isConnected } = useAccount();
-  const { status, isLoading } = useInsightsPayment();
+  const { checkIns, addCheckIn, getPreviousCheckIn, getHistoricalData } = useCheckIns();
+  const { status, isLoading, checkCooldown } = useInsightsPayment(checkIns.length);
   const navigate = useNavigate();
-  const { addCheckIn, getPreviousCheckIn, getHistoricalData } = useCheckIns();
   
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
@@ -25,13 +26,66 @@ const DailyCheckIn = () => {
   const [responses, setResponses] = useState<Record<string, QuestionResponse>>({});
   const [showPaymentGate, setShowPaymentGate] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [canCheckIn, setCanCheckIn] = useState<boolean | null>(null);
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState(true);
 
-  // Generate questions on mount
+  // Check if user can check in BEFORE loading questions
   useEffect(() => {
-    if (isConnected && address && questions.length === 0 && !isLoadingQuestions) {
-      loadQuestions();
-    }
-  }, [isConnected, address]);
+    const verifyCanCheckIn = async () => {
+      if (!isConnected || !address || isLoading) {
+        setIsCheckingAvailability(false);
+        return;
+      }
+
+      setIsCheckingAvailability(true);
+      try {
+        const canCheck = await checkCooldown();
+        console.log('Check-in availability check:', {
+          canCheck,
+          isInCooldown: status.isInCooldown,
+          remainingCheckinsToday: status.remainingCheckinsToday,
+          hoursUntilNextCheckin: status.hoursUntilNextCheckin
+        });
+        
+        // If contract check says no, but status says yes, trust status (might be contract not deployed)
+        // The contract will enforce the actual rules when submitting
+        const canCheckBasedOnStatus = !status.isInCooldown && status.remainingCheckinsToday > 0;
+        const finalCanCheck = canCheck || canCheckBasedOnStatus;
+        
+        console.log('Final check-in decision:', {
+          contractCheck: canCheck,
+          statusCheck: canCheckBasedOnStatus,
+          finalDecision: finalCanCheck
+        });
+        
+        setCanCheckIn(finalCanCheck);
+        
+        // Only load questions if user can check in
+        if (finalCanCheck && questions.length === 0 && !isLoadingQuestions) {
+          loadQuestions();
+        }
+      } catch (error) {
+        console.error('Failed to check cooldown:', error);
+        // On error, check status to make decision
+        // If status shows they can check in, allow it (contract will enforce)
+        const canCheckBasedOnStatus = !status.isInCooldown && status.remainingCheckinsToday > 0;
+        console.log('Error checking cooldown, using status:', {
+          canCheckBasedOnStatus,
+          isInCooldown: status.isInCooldown,
+          remainingCheckinsToday: status.remainingCheckinsToday
+        });
+        setCanCheckIn(canCheckBasedOnStatus);
+        if (canCheckBasedOnStatus && questions.length === 0 && !isLoadingQuestions) {
+          loadQuestions();
+        }
+      } finally {
+        setIsCheckingAvailability(false);
+      }
+    };
+
+    verifyCanCheckIn();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, address, isLoading, checkCooldown]);
 
   const loadQuestions = async () => {
     setIsLoadingQuestions(true);
@@ -206,6 +260,115 @@ const DailyCheckIn = () => {
     );
   }
 
+  // Check if user can check in - show blocking message BEFORE questions
+  if (isCheckingAvailability || isLoading) {
+    return (
+      <div className="space-y-4 sm:space-y-6 py-4 animate-fade-in">
+        <Card className="border border-border shadow-sm">
+          <CardContent className="pt-6 pb-6">
+            <div className="flex flex-col items-center justify-center space-y-4 py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">
+                Checking check-in availability...
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Show blocking message if user can't check in
+  // Prioritize canCheckIn from contract check, use status only for display
+  if (canCheckIn === false) {
+    // Determine which blocking message to show based on status
+    const isInCooldown = status.isInCooldown;
+    const noRemaining = status.remainingCheckinsToday === 0;
+    
+    return (
+      <div className="space-y-4 sm:space-y-6 py-4 animate-fade-in">
+        {isInCooldown ? (
+          <Card className="border-warning shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Lock className="w-5 h-5 text-warning" />
+                Check-in Cooldown
+              </CardTitle>
+              <CardDescription>
+                Please wait before checking in again. Minimum 5 hours between check-ins.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Alert>
+                <AlertDescription>
+                  You can check in again in <strong>{status.hoursUntilNextCheckin} hours</strong>.
+                </AlertDescription>
+              </Alert>
+              <div className="text-sm text-muted-foreground">
+                <p className="mb-2">📅 <strong>2 check-ins available daily</strong></p>
+                <p>Remaining today: <strong>{status.remainingCheckinsToday} of 2</strong></p>
+              </div>
+              <Button
+                onClick={() => navigate('/recommendations')}
+                className="w-full"
+                variant="outline"
+              >
+                View Previous Insights
+              </Button>
+            </CardContent>
+          </Card>
+        ) : noRemaining ? (
+          <Card className="border-warning shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Lock className="w-5 h-5 text-warning" />
+                Daily Limit Reached
+              </CardTitle>
+              <CardDescription>
+                You've used all 2 check-ins available today.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Alert>
+                <AlertDescription>
+                  You can check in again tomorrow. <strong>2 check-ins are available daily</strong>.
+                </AlertDescription>
+              </Alert>
+              <Button
+                onClick={() => navigate('/recommendations')}
+                className="w-full"
+                variant="outline"
+              >
+                View Previous Insights
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-warning shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Lock className="w-5 h-5 text-warning" />
+                Cannot Check In
+              </CardTitle>
+              <CardDescription>
+                You cannot check in at this time.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                onClick={() => navigate('/recommendations')}
+                className="w-full"
+                variant="outline"
+              >
+                View Previous Insights
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
   // Loading questions
   if (isLoadingQuestions || questions.length === 0) {
     return (
@@ -220,6 +383,12 @@ const DailyCheckIn = () => {
             </div>
           </CardContent>
         </Card>
+        <Alert className="border-primary/20 bg-primary/5">
+          <Info className="h-4 w-4 text-primary" />
+          <AlertDescription className="text-xs sm:text-sm">
+            This may take a moment - don't go too far while we create your check-in questions! We promise to improve in the future.
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -238,6 +407,12 @@ const DailyCheckIn = () => {
             </div>
           </CardContent>
         </Card>
+        <Alert className="border-primary/20 bg-primary/5">
+          <Info className="h-4 w-4 text-primary" />
+          <AlertDescription className="text-xs sm:text-sm">
+            This may take a moment - don't go too far while we analyze your answers! We promise to improve in the future.
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -247,13 +422,21 @@ const DailyCheckIn = () => {
       {/* Payment Info */}
       <Card className="border border-dashed border-muted bg-muted/30">
         <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Check-in Fee</p>
-              <p className="text-xs text-muted-foreground">
-                0.1 CELO per check-in
-              </p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Check-in Fee</p>
+                <p className="text-xs text-muted-foreground">
+                  0.1 CELO per check-in
+                </p>
+              </div>
             </div>
+            <Alert className="border-primary/20 bg-primary/5 py-2">
+              <Info className="h-4 w-4 text-primary" />
+              <AlertDescription className="text-xs">
+                <strong>2 check-ins available daily</strong> • {status.remainingCheckinsToday} remaining today • Minimum 5 hours between check-ins
+              </AlertDescription>
+            </Alert>
           </div>
         </CardContent>
       </Card>

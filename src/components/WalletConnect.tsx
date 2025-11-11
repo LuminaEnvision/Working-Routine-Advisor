@@ -65,18 +65,78 @@ export const WalletConnect = () => {
       return []; // No connect buttons in Farcaster - wallet is automatically available
     }
     
-    // Standalone mode: show all connectors except Farcaster
+    // Detect Safari for more lenient connector filtering
+    const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    
+    // Find MetaMask connector first
+    const metaMaskConnector = connectors.find(
+      (c) => {
+        if (!isSafari && !c.ready) return false;
+        const name = c.name?.toLowerCase() || '';
+        const id = c.id.toLowerCase();
+        return (
+          name.includes("metamask") ||
+          id.includes("metamask") ||
+          (c.type === "injected" && typeof window !== 'undefined' && window.ethereum?.isMetaMask && name !== "farcaster wallet")
+        );
+      }
+    );
+    
+    // Standalone mode: show connectors except Farcaster and Injected (if MetaMask is available)
+    // In Safari, show connectors even if not immediately ready
     return connectors.filter(
-      (connector) => 
-        connector.ready && 
-        connector.name !== 'Farcaster Wallet' &&
-        !connector.id.includes('farcaster')
+      (connector) => {
+        // Skip if not ready (unless Safari)
+        if (!isSafari && !connector.ready) return false;
+        
+        // Skip Farcaster wallet
+        if (connector.name === 'Farcaster Wallet' || connector.id.includes('farcaster')) {
+          return false;
+        }
+        
+        // Hide "Injected Wallet" if MetaMask is available (MetaMask IS an injected wallet)
+        if (metaMaskConnector && (connector.name === 'Injected' || connector.name === 'Injected Wallet' || connector.id === 'injected')) {
+          return false;
+        }
+        
+        // Skip Safe connector
+        if (connector.name?.toLowerCase().includes("safe") || connector.id.toLowerCase().includes("safe")) {
+          return false;
+        }
+        
+        return true;
+      }
     );
   }, [connectors, isInFarcaster]);
 
   const handleConnect = async (connectorId: string) => {
     const connector = connectors.find((item) => item.id === connectorId);
-    if (!connector) return;
+    if (!connector) {
+      const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      if (isSafari) {
+        toast.error(
+          "Wallet not found. In Safari, please install MetaMask extension or use WalletConnect to connect a mobile wallet.",
+          { duration: 6000 }
+        );
+      } else {
+        toast.error("Wallet connector not found. Please try another wallet option.");
+      }
+      return;
+    }
+
+    // Check if connector is ready (especially important for Safari)
+    if (!connector.ready) {
+      const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      if (isSafari && connector.name?.toLowerCase().includes('metamask')) {
+        toast.error(
+          "MetaMask not detected in Safari. Please install MetaMask extension or use WalletConnect instead.",
+          { duration: 6000 }
+        );
+        return;
+      }
+      toast.error(`${connector.name} is not available. Please install the wallet extension or try another option.`);
+      return;
+    }
 
     // Reset any previous connection errors
     if (error) {
@@ -97,8 +157,16 @@ export const WalletConnect = () => {
           onError: (connectionError) => {
             const errorMessage = connectionError?.message ?? "Failed to connect wallet";
             // Don't show error for user cancellation
-            if (!errorMessage.includes("reset") && !errorMessage.includes("rejected")) {
-              toast.error(errorMessage);
+            if (!errorMessage.includes("reset") && !errorMessage.includes("rejected") && !errorMessage.includes("User rejected")) {
+              const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+              if (isSafari && errorMessage.includes("Connector not found")) {
+                toast.error(
+                  "No wallet found. In Safari, please install MetaMask or use WalletConnect to connect a mobile wallet.",
+                  { duration: 6000 }
+                );
+              } else {
+                toast.error(errorMessage);
+              }
             }
             setPendingId(null);
           },
@@ -106,8 +174,16 @@ export const WalletConnect = () => {
       );
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Connection failed";
-      if (!errorMessage.includes("reset") && !errorMessage.includes("rejected")) {
-        toast.error(errorMessage);
+      if (!errorMessage.includes("reset") && !errorMessage.includes("rejected") && !errorMessage.includes("User rejected")) {
+        const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        if (isSafari && (errorMessage.includes("Connector not found") || errorMessage.includes("not found"))) {
+          toast.error(
+            "No wallet found. In Safari, please install MetaMask or use WalletConnect to connect a mobile wallet.",
+            { duration: 6000 }
+          );
+        } else {
+          toast.error(errorMessage);
+        }
       }
       setPendingId(null);
     }
@@ -155,22 +231,22 @@ export const WalletConnect = () => {
   if (isConnected && address) {
     return (
       <div className="space-y-2">
-        <Button
-          onClick={handleDisconnect}
-          variant="outline"
-          className="w-full justify-start gap-2"
-        >
-          <Wallet className="w-4 h-4" />
-          <span className="font-mono text-sm">
-            {address.slice(0, 6)}...{address.slice(-4)}
-          </span>
+      <Button
+        onClick={handleDisconnect}
+        variant="outline"
+        className="w-full justify-start gap-2"
+      >
+        <Wallet className="w-4 h-4" />
+        <span className="font-mono text-sm">
+          {address.slice(0, 6)}...{address.slice(-4)}
+        </span>
           {!isOnCorrectChain && (
             <Badge variant="destructive" className="ml-auto">
               Wrong Chain
             </Badge>
           )}
-          <LogOut className="w-4 h-4 ml-auto" />
-        </Button>
+        <LogOut className="w-4 h-4 ml-auto" />
+      </Button>
         {!isOnCorrectChain && (
           <Button
             onClick={ensureCorrectChain}
@@ -207,17 +283,17 @@ export const WalletConnect = () => {
   return (
     <div className="space-y-2">
       {availableConnectors.map((connector) => (
-        <Button
+    <Button
           key={connector.id}
           onClick={() => handleConnect(connector.id)}
-          className="w-full bg-gradient-primary gap-2"
+      className="w-full bg-gradient-primary gap-2"
           disabled={status === "pending" && pendingId === connector.id}
-        >
-          <Wallet className="w-5 h-5" />
+    >
+      <Wallet className="w-5 h-5" />
           {status === "pending" && pendingId === connector.id
             ? `Connecting ${connector.name}...`
             : `Connect ${connector.name}`}
-        </Button>
+    </Button>
       ))}
       {error && (
         <p className="text-sm text-destructive">
