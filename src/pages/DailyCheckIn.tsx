@@ -301,7 +301,20 @@ const DailyCheckIn = () => {
             <CardContent className="space-y-4">
               <Alert>
                 <AlertDescription>
-                  You can check in again in <strong>{status.hoursUntilNextCheckin} hours</strong>.
+                  {(() => {
+                    const seconds = status.cooldownRemainingSeconds || 0;
+                    const hours = Math.floor(seconds / 3600);
+                    const minutes = Math.floor((seconds % 3600) / 60);
+                    if (hours > 0 && minutes > 0) {
+                      return <>You can check in again in <strong>{hours}h {minutes}m</strong>.</>;
+                    } else if (hours > 0) {
+                      return <>You can check in again in <strong>{hours} hour{hours !== 1 ? 's' : ''}</strong>.</>;
+                    } else if (minutes > 0) {
+                      return <>You can check in again in <strong>{minutes} minute{minutes !== 1 ? 's' : ''}</strong>.</>;
+                    } else {
+                      return <>You can check in again in <strong>{status.hoursUntilNextCheckin} hour{status.hoursUntilNextCheckin !== 1 ? 's' : ''}</strong>.</>;
+                    }
+                  })()}
                 </AlertDescription>
               </Alert>
               <div className="text-sm text-muted-foreground">

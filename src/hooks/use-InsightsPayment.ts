@@ -17,6 +17,7 @@ type SubscriptionStatus = {
   isInCooldown: boolean;
   lastCheckin: number;
   hoursUntilNextCheckin: number;
+  cooldownRemainingSeconds: number; // For displaying precise countdown
   checkinCount: number;
   checkinsUntilReward: number;
   nextRewardAt: number; // Check-in number when next reward will be given
@@ -30,6 +31,7 @@ const defaultStatus: SubscriptionStatus = {
   isInCooldown: false,
   lastCheckin: 0,
   hoursUntilNextCheckin: 0,
+  cooldownRemainingSeconds: 0,
   checkinCount: 0,
   checkinsUntilReward: 5,
   nextRewardAt: 5,
@@ -109,6 +111,38 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
   const [dailyCheckinCount, setDailyCheckinCount] = useState<number>(0);
   const [remainingCheckinsToday, setRemainingCheckinsToday] = useState<number>(2);
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
+  const [localCooldownRemaining, setLocalCooldownRemaining] = useState<number>(0);
+
+  // Real-time countdown timer for cooldown
+  useEffect(() => {
+    if (!address || !isInCooldown || lastCheckinTimestamp === 0) {
+      setLocalCooldownRemaining(0);
+      return;
+    }
+
+    // Calculate cooldown end time
+    const cooldownEnd = lastCheckinTimestamp + 5 * 60 * 60; // 5 hours in seconds
+    
+    // Update countdown every second
+    const updateCountdown = () => {
+      const now = Math.floor(Date.now() / 1000);
+      const remaining = Math.max(0, cooldownEnd - now);
+      setLocalCooldownRemaining(remaining);
+      
+      // If cooldown expired, trigger a refetch
+      if (remaining === 0) {
+        refetch();
+      }
+    };
+
+    // Initial update
+    updateCountdown();
+
+    // Update every second
+    const interval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(interval);
+  }, [address, isInCooldown, lastCheckinTimestamp, refetch]);
 
   // Fetch contract data using publicClient (more reliable than useContractRead)
   useEffect(() => {
@@ -255,9 +289,14 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
     const lastCheckinValue = lastCheckinTimestamp;
     
     // Calculate hours until next check-in (5 hour cooldown)
+    // Use local countdown if available (real-time), otherwise use contract value
     let hoursUntilNextCheckin = 0;
-    if (cooldownRemaining > 0) {
-      hoursUntilNextCheckin = Math.max(0, Math.ceil(cooldownRemaining / 3600));
+    const effectiveCooldownRemaining = localCooldownRemaining > 0 ? localCooldownRemaining : cooldownRemaining;
+    
+    if (effectiveCooldownRemaining > 0) {
+      // Show hours and minutes for better UX
+      const totalHours = effectiveCooldownRemaining / 3600;
+      hoursUntilNextCheckin = Math.max(0, Math.ceil(totalHours));
     } else if (cooldown && lastCheckinValue > 0) {
       // Fallback calculation if cooldownRemaining not available
       const cooldownEnd = lastCheckinValue + 5 * 60 * 60; // 5 hours in seconds
@@ -292,8 +331,9 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
       nextRewardAt,
       dailyCheckinCount,
       remainingCheckinsToday,
+      cooldownRemainingSeconds: effectiveCooldownRemaining,
     };
-  }, [address, isSubscribed, subscriptionExpiry, isInCooldown, lastCheckinTimestamp, checkinCount, checkinsUntilReward, dailyCheckinCount, remainingCheckinsToday, cooldownRemaining]);
+  }, [address, isSubscribed, subscriptionExpiry, isInCooldown, lastCheckinTimestamp, checkinCount, checkinsUntilReward, dailyCheckinCount, remainingCheckinsToday, cooldownRemaining, localCooldownRemaining]);
 
 
   const submitCheckin = useCallback(

@@ -48,14 +48,16 @@ export const ChooseWalletDialog = ({
     }
   }, [open, connectors]);
 
-  // Detect Safari for more lenient connector filtering
+  // Detect Safari and mobile devices for more lenient connector filtering
   const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const isMobile = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const isMobileOrSafari = isMobile || isSafari;
   
   // Find Farcaster, MetaMask, and External wallet connectors
   // More flexible matching - check name, id, and type
-  // In Safari, be more lenient with ready check - show connectors even if not immediately ready
+  // On mobile/Safari, be more lenient with ready check - show connectors even if not immediately ready
   const farcasterConnector = connectors.find(
-    (c) => (isSafari || c.ready) && (
+    (c) => (isMobileOrSafari || c.ready) && (
       c.name?.toLowerCase().includes("farcaster") ||
       c.id.toLowerCase().includes("farcaster") ||
       c.name === "Farcaster Wallet"
@@ -63,10 +65,11 @@ export const ChooseWalletDialog = ({
   );
   // Find MetaMask - check multiple ways
   // Prioritize MetaMaskConnector over InjectedConnector to avoid duplicates
+  // On mobile, always show MetaMask connector (mobile browsers can have MetaMask installed)
   const metaMaskConnector = connectors.find(
     (c) => {
-      // In Safari, show MetaMask connector even if not ready
-      if (!isSafari && !c.ready) return false;
+      // On mobile/Safari, show MetaMask connector even if not ready
+      if (!isMobileOrSafari && !c.ready) return false;
       const name = c.name?.toLowerCase() || '';
       const id = c.id.toLowerCase();
       // Prefer connectors with "metamask" in id/name over generic injected connectors
@@ -80,12 +83,22 @@ export const ChooseWalletDialog = ({
       return isInjectedWithMetaMask;
     }
   );
+  // WalletConnect is especially important on mobile - always show it if available
   const walletConnectConnector = connectors.find(
-    (c) => (isSafari || c.ready) && (
-      c.name?.toLowerCase().includes("walletconnect") ||
-      c.id.toLowerCase().includes("walletconnect") ||
-      c.type === "walletConnect"
-    )
+    (c) => {
+      // On mobile, always show WalletConnect (it's the best option for mobile)
+      if (isMobile) return (
+        c.name?.toLowerCase().includes("walletconnect") ||
+        c.id.toLowerCase().includes("walletconnect") ||
+        c.type === "walletConnect"
+      );
+      // On Safari/desktop, show if ready or Safari
+      return (isSafari || c.ready) && (
+        c.name?.toLowerCase().includes("walletconnect") ||
+        c.id.toLowerCase().includes("walletconnect") ||
+        c.type === "walletConnect"
+      );
+    }
   );
   
   // Hide "Injected Wallet" if MetaMask is available (MetaMask IS an injected wallet)
