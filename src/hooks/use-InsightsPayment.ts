@@ -113,6 +113,11 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
   const [localCooldownRemaining, setLocalCooldownRemaining] = useState<number>(0);
 
+  // Refetch function - defined early to avoid hoisting issues
+  const refetch = useCallback(() => {
+    setRefetchTrigger((prev) => prev + 1);
+  }, []);
+
   // Real-time countdown timer for cooldown
   useEffect(() => {
     if (!address || !isInCooldown || lastCheckinTimestamp === 0) {
@@ -131,7 +136,7 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
       
       // If cooldown expired, trigger a refetch
       if (remaining === 0) {
-        refetch();
+        setRefetchTrigger((prev) => prev + 1);
       }
     };
 
@@ -142,7 +147,7 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
     const interval = setInterval(updateCountdown, 1000);
 
     return () => clearInterval(interval);
-  }, [address, isInCooldown, lastCheckinTimestamp, refetch]);
+  }, [address, isInCooldown, lastCheckinTimestamp]);
 
   // Fetch contract data using publicClient (more reliable than useContractRead)
   useEffect(() => {
@@ -275,10 +280,7 @@ export const useInsightsPayment = (fallbackCheckInCount?: number) => {
     return () => clearInterval(interval);
   }, [address, refetchTrigger, fallbackCheckInCount]);
 
-  // Refetch all data
-  const refetch = useCallback(async () => {
-    setRefetchTrigger((prev) => prev + 1);
-  }, []);
+  // Refetch function is defined above to avoid hoisting issues
 
   const status: SubscriptionStatus = useMemo(() => {
     if (!address) {
