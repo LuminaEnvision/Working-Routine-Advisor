@@ -1,0 +1,42 @@
+# Vercel ignore file - exclude files that shouldn't be deployed
+
+# Contract artifacts and build files
+artifacts/
+cache/
+contracts/*.sol
+scripts/
+hardhat.config.cjs
+ignition/
+test/
+
+# Documentation (optional - can be included)
+# CONTRACT_REVIEW.md
+# MIGRATION_GUIDE.md
+# MIGRATION_LOG.md
+# DEPLOYMENT_COMPLETE.md
+# WITHDRAWAL_GUIDE.md
+# SUBSCRIPTION_STATUS.md
+# VERCEL_DEPLOYMENT.md
+# FARCASTER_*.md
+# OPENROUTER_SETUP.md
+# V2_SUBSCRIPTION_BACKUP.md
+
+# Node modules (handled by Vercel)
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
