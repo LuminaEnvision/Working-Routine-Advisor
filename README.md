@@ -31,6 +31,12 @@ Built on **Celo**, the app combines sustainability and behavioral science to rew
 - **Future use:** Upgradeable to liquid ERC20 for open trading
 
 ---
+## V0 deployed, check the walkthrough video: [link](https://youtu.be/5JEiJVlPwNY)
+
+Disadvantages: 
+- simple vibecoded UX/UI
+- free AI API thus slow speed of loading answers and recommendations
+- streak and stats are not always responsive
 
 ## License
 
