@@ -6,7 +6,11 @@ import { useNavigate } from "react-router-dom";
 import { useAccount } from "wagmi";
 import { Logo } from "@/components/Logo";
 
-const ChooseWalletDialog = lazy(() => import("@/components/ChooseWalletDialog"));
+const ChooseWalletDialog = lazy(() =>
+  import("@/components/ChooseWalletDialog").then((module) => ({
+    default: module.ChooseWalletDialog,
+  }))
+);
 
 const Index = () => {
   const { isConnected } = useAccount();
