@@ -89,3 +89,5 @@ This release finalizes:
 4. End-to-end tests for the 0.1 CELO payment flow (subscription UI deferred to V2).
 
 ---
+
+Questions or feature ideas? Open an issue or drop a note on Farcaster (@WorkingRoutineAdvisor). Enjoy your insights! 🎉
