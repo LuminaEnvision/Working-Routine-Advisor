@@ -8,6 +8,24 @@ interface Window {
     isMetaMask?: boolean;
   };
   farcaster?: {
-    sdk?: any;
+    sdk?: {
+      actions?: {
+        ready?: () => Promise<void>;
+      };
+      context?: any;
+      wallet?: {
+        getEthereumProvider?: () => any;
+        request?: (args: { method: string; params?: any[] }) => Promise<any>;
+        on?: (event: string, handler: (data: any) => void) => void;
+      };
+    };
+    wallet?: {
+      request: (args: { method: string; params?: any[] }) => Promise<any>;
+      on: (event: string, handler: (data: any) => void) => void;
+      removeListener?: (event: string, handler: (data: any) => void) => void;
+    };
+    context?: any;
   };
+  Buffer?: typeof Buffer;
+  global?: typeof globalThis;
 }

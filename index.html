@@ -1,40 +1,92 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!-- Farcaster Mini App Metadata -->
     <meta name="fc:miniapp" content='{
-  "version": "1",
-  "imageUrl": "https://daily-farcaster-coach.lovable.app/og-image.png",
-  "button": {
-    "title": "Open Advisor",
-    "action": {
-      "type": "launch_frame",
-      "name": "Daily Productivity Advisor",
-      "url": "https://daily-farcaster-coach.lovable.app",
-      "splashImageUrl": "https://daily-farcaster-coach.lovable.app/icon.png",
-      "splashBackgroundColor": "#ffffff"
-    }
-  }
-}' />
+      "version": "1.0",
+      "imageUrl": "https://working-routine-advisor.vercel.app/logo.svg",
+      "button": {
+        "title": "Open Working Routine Advisor",
+        "action": {
+          "type": "launch_frame",
+          "name": "Working Routine Advisor",
+          "url": "https://working-routine-advisor.vercel.app",
+          "splashImageUrl": "https://working-routine-advisor.vercel.app/logo.svg",
+          "splashBackgroundColor": "#ffffff"
+        }
+      }
+    }' />
+    <!-- Farcaster Frame Metadata (for sharing) -->
+    <meta property="fc:frame" content='{
+      "version": "next",
+      "imageUrl": "https://working-routine-advisor.vercel.app/logo.svg",
+      "button": {
+        "title": "Start Check-in",
+        "action": {
+          "type": "launch_frame",
+          "name": "Working Routine Advisor",
+          "url": "https://working-routine-advisor.vercel.app/daily-checkin"
+        }
+      }
+    }' />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Favicons for all browsers including Safari -->
+    
+    <!-- Primary Meta Tags -->
+    <title>Working Routine Advisor - AI-Powered Productivity Insights</title>
+    <meta name="title" content="Working Routine Advisor - AI-Powered Productivity Insights" />
+    <meta name="description" content="Track your daily productivity with AI-guided check-ins and get personalized recommendations to optimize your work habits and productivity." />
+    <meta name="author" content="Working Routine Advisor" />
+    <meta name="keywords" content="productivity, daily check-in, AI insights, work habits, routine tracking, productivity advisor" />
+    
+    <!-- Favicons for all browsers and devices -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" type="image/png" href="/favicon.ico" />
-    <link rel="alternate icon" href="/favicon.ico" />
-    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon.ico" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/logo.svg" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/logo.svg" />
+    <link rel="apple-touch-icon" sizes="144x144" href="/logo.svg" />
+    <link rel="apple-touch-icon" sizes="120x120" href="/logo.svg" />
+    <link rel="apple-touch-icon" sizes="114x114" href="/logo.svg" />
+    <link rel="apple-touch-icon" sizes="76x76" href="/logo.svg" />
+    <link rel="apple-touch-icon" sizes="72x72" href="/logo.svg" />
+    <link rel="apple-touch-icon" sizes="60x60" href="/logo.svg" />
+    <link rel="apple-touch-icon" sizes="57x57" href="/logo.svg" />
     <link rel="mask-icon" href="/favicon.svg" color="#35D07F" />
-    <title>WRA - Working Routine Advisor</title>
-    <meta name="description" content="Track your daily productivity with AI-guided check-ins and get personalized recommendations to optimize your work habits." />
-    <meta name="author" content="Daily Advisor" />
-
-    <meta property="og:title" content="Daily Advisor - AI-Powered Task Management" />
-    <meta property="og:description" content="Track your daily productivity with AI-guided check-ins and get personalized recommendations to optimize your work habits." />
+    <meta name="theme-color" content="#35D07F" />
+    <meta name="msapplication-TileColor" content="#35D07F" />
+    <meta name="msapplication-TileImage" content="/logo.svg" />
+    
+    <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
-
+    <meta property="og:url" content="https://working-routine-advisor.vercel.app/" />
+    <meta property="og:title" content="Working Routine Advisor - AI-Powered Productivity Insights" />
+    <meta property="og:description" content="Track your daily productivity with AI-guided check-ins and get personalized recommendations to optimize your work habits and productivity." />
+    <!-- Use logo.svg for now, but ideally create a 1200x630px PNG og-image.png for better social media compatibility -->
+    <meta property="og:image" content="https://working-routine-advisor.vercel.app/logo.svg" />
+    <meta property="og:image:secure_url" content="https://working-routine-advisor.vercel.app/logo.svg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/svg+xml" />
+    <meta property="og:image:alt" content="Working Routine Advisor - AI-Powered Productivity Insights" />
+    <meta property="og:site_name" content="Working Routine Advisor" />
+    <meta property="og:locale" content="en_US" />
+    
+    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@lovable_dev" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <meta name="twitter:url" content="https://working-routine-advisor.vercel.app/" />
+    <meta name="twitter:title" content="Working Routine Advisor - AI-Powered Productivity Insights" />
+    <meta name="twitter:description" content="Track your daily productivity with AI-guided check-ins and get personalized recommendations to optimize your work habits and productivity." />
+    <meta name="twitter:image" content="https://working-routine-advisor.vercel.app/logo.svg" />
+    <meta name="twitter:image:alt" content="Working Routine Advisor Logo" />
+    <meta name="twitter:creator" content="@WorkingRoutineAdvisor" />
+    
+    <!-- Additional Meta Tags -->
+    <meta name="robots" content="index, follow" />
+    <meta name="language" content="English" />
+    <meta name="revisit-after" content="7 days" />
+    <link rel="canonical" href="https://working-routine-advisor.vercel.app/" />
   </head>
 
   <body>

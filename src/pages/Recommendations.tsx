@@ -6,7 +6,7 @@ import { WalletConnect } from "@/components/WalletConnect";
 import { useInsightsPayment } from "@/hooks/use-InsightsPayment";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Lightbulb, Calendar, TestTube, Loader2, Sparkles, Utensils, TrendingUp, Target } from "lucide-react";
+import { Lightbulb, Calendar, TestTube, Loader2, Sparkles, Utensils, TrendingUp, Target, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { generateInsights } from "@/lib/ai";
 import { useCheckIns } from "@/contexts/CheckInContext";
@@ -25,6 +25,15 @@ const Recommendations = () => {
   const [insights, setInsights] = useState<InsightResponse | null>(null);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
+  const [insightsLoaded, setInsightsLoaded] = useState(false);
+  const [showCooldownAfterInsights, setShowCooldownAfterInsights] = useState(false);
+  
+  // Debug: Log check-ins to help diagnose issues
+  useEffect(() => {
+    console.log('Recommendations page - checkIns:', checkIns);
+    console.log('Recommendations page - latestCheckIn:', checkIns.length > 0 ? checkIns[checkIns.length - 1] : null);
+    console.log('Recommendations page - latestAnalysis:', checkIns.length > 0 ? checkIns[checkIns.length - 1]?.analysis : null);
+  }, [checkIns]);
 
   // Refetch check-in count when check-ins change (after new check-in is saved)
   useEffect(() => {
@@ -67,23 +76,37 @@ const Recommendations = () => {
     if (checkIns.length > 0) {
       setIsLoadingInsights(true);
       setInsightsError(null);
+      setInsightsLoaded(false);
+      setShowCooldownAfterInsights(false);
       
       generateInsights(checkIns)
         .then((result) => {
           setInsights(result);
           setIsLoadingInsights(false);
+          setInsightsLoaded(true);
           if (result) {
             setInsightsError(null);
+            // After insights are loaded, wait a moment then show cooldown
+            setTimeout(() => {
+              setShowCooldownAfterInsights(true);
+            }, 500);
           }
         })
         .catch((error) => {
           console.error('Failed to generate insights:', error);
           setInsightsError('Failed to generate insights. Please try again later.');
           setIsLoadingInsights(false);
+          setInsightsLoaded(true);
+          // Even on error, show cooldown after a delay
+          setTimeout(() => {
+            setShowCooldownAfterInsights(true);
+          }, 500);
         });
     } else {
       setInsights(null);
       setInsightsError(null);
+      setInsightsLoaded(true);
+      setShowCooldownAfterInsights(true);
     }
   }, [checkIns]);
 
@@ -189,6 +212,25 @@ const Recommendations = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Loading State - Show when insights are being generated after check-in */}
+          {isLoadingInsights && !latestAnalysis && (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardContent className="pt-6 pb-6">
+                <div className="flex flex-col items-center justify-center space-y-4 py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <div className="text-center space-y-2">
+                    <p className="text-sm font-medium text-foreground">
+                      Generating your personalized insights...
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Analyzing your check-in responses and creating recommendations
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Latest Analysis from AI (New Format) */}
           {latestAnalysis && (
@@ -319,8 +361,68 @@ const Recommendations = () => {
             </Card>
           )}
 
+          {/* Cooldown Message - Only show after insights are loaded */}
+          {showCooldownAfterInsights && insightsLoaded && (status.isInCooldown || status.remainingCheckinsToday < 2) && (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+                  <Lock className="w-5 h-5 text-primary" />
+                  Next Check-in Available
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
+                  Your cooldown period starts now
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {status.isInCooldown ? (
+                  <div className="space-y-2">
+                    <p className="text-xs sm:text-sm text-muted-foreground">
+                      {(() => {
+                        const seconds = status.cooldownRemainingSeconds || 0;
+                        const hours = Math.floor(seconds / 3600);
+                        const minutes = Math.floor((seconds % 3600) / 60);
+                        if (hours > 0 && minutes > 0) {
+                          return <>You can check in again in <strong className="text-foreground">{hours}h {minutes}m</strong>.</>;
+                        } else if (hours > 0) {
+                          return <>You can check in again in <strong className="text-foreground">{hours} hour{hours !== 1 ? 's' : ''}</strong>.</>;
+                        } else if (minutes > 0) {
+                          return <>You can check in again in <strong className="text-foreground">{minutes} minute{minutes !== 1 ? 's' : ''}</strong>.</>;
+                        } else {
+                          return <>You can check in again in <strong className="text-foreground">{status.hoursUntilNextCheckin} hour{status.hoursUntilNextCheckin !== 1 ? 's' : ''}</strong>.</>;
+                        }
+                      })()}
+                    </p>
+                  </div>
+                ) : status.remainingCheckinsToday === 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-xs sm:text-sm text-muted-foreground">
+                      You've used all <strong className="text-foreground">2 check-ins</strong> available today.
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">
+                      You can check in again <strong className="text-foreground">tomorrow</strong>.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs sm:text-sm text-muted-foreground">
+                      You have <strong className="text-foreground">{status.remainingCheckinsToday} check-in{status.remainingCheckinsToday !== 1 ? 's' : ''}</strong> remaining today.
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">
+                      Minimum <strong className="text-foreground">5 hours</strong> between check-ins.
+                    </p>
+                  </div>
+                )}
+                <div className="pt-2 border-t border-border/50">
+                  <p className="text-xs text-muted-foreground">
+                    📅 <strong>2 check-ins available daily</strong> • Minimum 5 hours between check-ins
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Legacy AI Insights Card (for backward compatibility) */}
-          {checkIns.length > 0 && !latestAnalysis && (
+          {checkIns.length > 0 && !latestAnalysis && !isLoadingInsights && (
             <Card className="border-primary/20 bg-primary/5">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm sm:text-base flex items-center gap-2">
@@ -428,7 +530,7 @@ const Recommendations = () => {
               <CardHeader>
                 <CardTitle className="text-sm sm:text-base">No Check-ins Yet</CardTitle>
                 <CardDescription className="text-xs sm:text-sm">
-                  Complete your first check-in to start tracking your progress.
+                  Complete your first check-in to start tracking your progress. Once you have check-ins, you'll see personalized recommendations and insights here.
                 </CardDescription>
               </CardHeader>
               <CardContent>

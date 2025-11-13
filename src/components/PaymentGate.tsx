@@ -37,10 +37,9 @@ interface PaymentGateProps {
 export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps) => {
   const { address, isConnected, chainId: wagmiChainId } = useAccount();
   const { chainId, isOnCorrectChain, ensureCorrectChain } = useChainManager();
-  const { status, isLoading, submitCheckin, isProcessing, checkCooldown } = useInsightsPayment();
+  const { status, isLoading, submitCheckin, isProcessing } = useInsightsPayment();
   const navigate = useNavigate();
   const [isUploadingIPFS, setIsUploadingIPFS] = useState(false);
-  const [isCheckingCooldown, setIsCheckingCooldown] = useState(false);
   const [balance, setBalance] = useState<bigint | null>(null);
   const [balanceError, setBalanceError] = useState<Error | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -159,23 +158,6 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
     setShowConfirmDialog(false);
 
     try {
-      setIsCheckingCooldown(true);
-      
-      // Check cooldown and daily limit
-      const canCheckIn = await checkCooldown();
-      if (!canCheckIn) {
-        if (status.isInCooldown) {
-          toast.error(`Please wait ${status.hoursUntilNextCheckin} hours before checking in again. Minimum 5 hours between check-ins.`);
-        } else if (status.remainingCheckinsToday === 0) {
-          toast.error('Daily limit reached: 2 check-ins per day. Please try again tomorrow.');
-        } else {
-          toast.error('Cannot check in at this time. Please try again later.');
-        }
-        setShowConfirmDialog(false);
-        setIsCheckingCooldown(false);
-        return;
-      }
-      
       setIsUploadingIPFS(true);
       
       // Upload check-in data to IPFS (optional - returns empty string if Pinata not configured)
@@ -209,95 +191,20 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
       // Don't navigate here - let the parent component handle it after analysis completes
       onPaymentComplete();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Payment failed';
+      let message = error instanceof Error ? error.message : 'Payment failed';
+      if (message.includes('Daily limit reached')) {
+        message = 'Daily limit reached: 2 check-ins per day. Please try again tomorrow.';
+      } else if (message.includes('Please wait 5 hours')) {
+        message = 'Please wait 5 hours between check-ins before trying again.';
+      }
       toast.error(message);
     } finally {
-      setIsCheckingCooldown(false);
       setIsUploadingIPFS(false);
     }
   };
 
 
-  // Show cooldown message if in cooldown
-  if (status.isInCooldown) {
-    return (
-      <Card className="border-warning">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Lock className="w-5 h-5 text-warning" />
-            Check-in Cooldown
-          </CardTitle>
-          <CardDescription>
-            Please wait before checking in again. Minimum 5 hours between check-ins.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Alert>
-            <AlertDescription>
-              {(() => {
-                const seconds = status.cooldownRemainingSeconds || 0;
-                const hours = Math.floor(seconds / 3600);
-                const minutes = Math.floor((seconds % 3600) / 60);
-                if (hours > 0 && minutes > 0) {
-                  return <>You can check in again in <strong>{hours}h {minutes}m</strong>.</>;
-                } else if (hours > 0) {
-                  return <>You can check in again in <strong>{hours} hour{hours !== 1 ? 's' : ''}</strong>.</>;
-                } else if (minutes > 0) {
-                  return <>You can check in again in <strong>{minutes} minute{minutes !== 1 ? 's' : ''}</strong>.</>;
-                } else {
-                  return <>You can check in again in <strong>{status.hoursUntilNextCheckin} hour{status.hoursUntilNextCheckin !== 1 ? 's' : ''}</strong>.</>;
-                }
-              })()}
-            </AlertDescription>
-          </Alert>
-          <div className="text-sm text-muted-foreground">
-            <p className="mb-2">📅 <strong>2 check-ins available daily</strong></p>
-            <p>Remaining today: <strong>{status.remainingCheckinsToday} of 2</strong></p>
-          </div>
-          <Button
-            onClick={() => navigate('/recommendations')}
-            className="w-full"
-            variant="outline"
-          >
-            View Previous Insights
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Show daily limit reached message
-  if (status.remainingCheckinsToday === 0) {
-    return (
-      <Card className="border-warning">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Lock className="w-5 h-5 text-warning" />
-            Daily Limit Reached
-          </CardTitle>
-          <CardDescription>
-            You've used all 2 check-ins available today.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Alert>
-            <AlertDescription>
-              You can check in again tomorrow. <strong>2 check-ins are available daily</strong>.
-            </AlertDescription>
-          </Alert>
-          <Button
-            onClick={() => navigate('/recommendations')}
-            className="w-full"
-            variant="outline"
-          >
-            View Previous Insights
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (isLoading || isCheckingCooldown || isUploadingIPFS) {
+  if (isLoading || isUploadingIPFS) {
     return (
       <Card>
         <CardContent className="pt-6">
@@ -305,7 +212,6 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
             <p className="text-sm text-muted-foreground">
               {isLoading && 'Loading...'}
-              {isCheckingCooldown && 'Checking cooldown status...'}
               {isUploadingIPFS && 'Uploading check-in data to IPFS...'}
             </p>
           </div>
@@ -363,14 +269,14 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
               )}
               <Button
                 onClick={handleOneOffPayment}
-                disabled={!hasSufficientBalance || !isOnCorrectChain || chainId !== 42220 || isProcessing || isCheckingCooldown || isUploadingIPFS}
+                disabled={!hasSufficientBalance || !isOnCorrectChain || chainId !== 42220 || isProcessing || isUploadingIPFS}
                 className="w-full bg-gradient-celo hover:opacity-90"
                 size="lg"
               >
                 <CreditCard className="w-4 h-4 mr-2" />
                 {!isOnCorrectChain || chainId !== 42220
                   ? 'Switch to Celo Network'
-                  : isProcessing || isCheckingCooldown || isUploadingIPFS
+                  : isProcessing || isUploadingIPFS
                   ? 'Processing...'
                   : `Pay ${formatUnits(CHECKIN_FEE, 18)} CELO`}
               </Button>

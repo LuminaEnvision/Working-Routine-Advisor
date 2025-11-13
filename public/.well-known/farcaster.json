@@ -1,0 +1,10 @@
+{
+  "accountAssociation": {
+    "account": {
+      "type": "custody",
+      "address": "YOUR_FARCASTER_ADDRESS_HERE"
+    },
+    "domain": "working-routine-advisor.vercel.app"
+  }
+}
+

@@ -26,6 +26,8 @@ const DailyCheckIn = () => {
   const [responses, setResponses] = useState<Record<string, QuestionResponse>>({});
   const [showPaymentGate, setShowPaymentGate] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [canCheckIn, setCanCheckIn] = useState<boolean | null>(null);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(true);
 
@@ -149,6 +151,7 @@ const DailyCheckIn = () => {
   const handlePaymentComplete = async () => {
     // After payment, analyze responses and save check-in
     setIsAnalyzing(true);
+    setAnalysisError(null);
     setShowPaymentGate(false); // Hide payment gate to show analyzing state
     
     try {
@@ -181,20 +184,25 @@ const DailyCheckIn = () => {
       addCheckIn(checkInData);
       console.log('Check-in saved successfully');
       
-      // Reset state
+      // Reset state for question flow
       setCurrentQuestion(0);
       setResponses({});
       setQuestions([]);
       
-      // Navigate to recommendations to see the analysis
-      setTimeout(() => {
-        navigate('/recommendations');
-        toast.success('Check-in completed! View your personalized recommendations.');
-      }, 500); // Small delay to ensure state is saved
+      // Wait for localStorage to save (CheckInContext saves in useEffect)
+      // Also wait a bit for the contract state to update
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Mark analysis as complete and stop analyzing state
+      setIsAnalyzing(false);
+      setAnalysisComplete(true);
+      toast.success('Check-in completed! Your personalized insights are ready in the Insights tab.');
     } catch (error) {
       console.error('Failed to analyze check-in:', error);
       toast.error('Check-in saved, but analysis failed. Please try again later.');
       setIsAnalyzing(false);
+      setAnalysisComplete(false);
+      setAnalysisError('We saved your check-in, but the AI analysis did not complete. Please view your Insights tab or try again later.');
       
       // Still save the check-in without analysis
       const currentTime = new Date();
@@ -215,7 +223,6 @@ const DailyCheckIn = () => {
       };
 
       addCheckIn(checkInData);
-      navigate('/recommendations');
     }
   };
 
@@ -254,6 +261,70 @@ const DailyCheckIn = () => {
                 Go to Connect Wallet
               </Button>
             </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Show analysis complete state
+  if (analysisComplete) {
+    return (
+      <div className="space-y-4 sm:space-y-6 py-4 animate-fade-in">
+        <Card className="border border-border shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base sm:text-lg">Check-in Complete</CardTitle>
+            <CardDescription>
+              Your responses have been analyzed. Head to the Insights tab to review your personalized recommendations.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button
+              className="w-full bg-gradient-celo hover:opacity-90"
+              onClick={() => navigate('/recommendations')}
+            >
+              View My Insights
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => navigate('/')}
+            >
+              Return Home
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (analysisError) {
+    return (
+      <div className="space-y-4 sm:space-y-6 py-4 animate-fade-in">
+        <Card className="border-warning shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Lock className="w-5 h-5 text-warning" />
+              Check-in Saved
+            </CardTitle>
+            <CardDescription>
+              {analysisError}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button
+              className="w-full bg-gradient-celo hover:opacity-90"
+              onClick={() => navigate('/recommendations')}
+            >
+              View Insights
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => navigate('/')}
+            >
+              Return Home
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -387,6 +458,12 @@ const DailyCheckIn = () => {
     return (
       <div className="space-y-4 sm:space-y-6 py-4 animate-fade-in">
         <Card className="border border-border shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base sm:text-lg">Ready to Check In</CardTitle>
+            <CardDescription>
+              Answer a few questions about your day to get personalized insights through working routine analysis. This will help identify patterns and bring improvement to your productivity.
+            </CardDescription>
+          </CardHeader>
           <CardContent className="pt-6 pb-6">
             <div className="flex flex-col items-center justify-center space-y-4 py-8">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />

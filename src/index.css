@@ -2,6 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Farcaster Mini App specific styles */
+@layer base {
+  /* Ensure app works well in Farcaster iframe */
+  html {
+    /* Prevent text selection issues on mobile */
+    -webkit-tap-highlight-color: transparent;
+    /* Smooth scrolling */
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    /* Prevent overscroll bounce on iOS */
+    overscroll-behavior: none;
+    /* Better font rendering on mobile */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Ensure touch targets are large enough */
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Allow smaller controls for radios/checkboxes so they don't become oversized */
+  button[role="radio"],
+  button[role="checkbox"],
+  [role="radio"],
+  [role="checkbox"] {
+    min-height: auto;
+    min-width: auto;
+  }
+  
+  /* Better mobile input handling */
+  input, textarea, select {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+}
+
 /* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
 All colors MUST be HSL.
 */
