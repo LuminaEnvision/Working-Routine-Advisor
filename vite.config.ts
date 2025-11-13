@@ -27,5 +27,30 @@ export default defineConfig({
     commonjsOptions: {
       transformMixedEsModules: true,
     },
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (
+              id.includes("wagmi") ||
+              id.includes("viem") ||
+              id.includes("@walletconnect")
+            ) {
+              return "wagmi";
+            }
+            if (id.includes("@radix-ui")) {
+              return "radix";
+            }
+            if (id.includes("@tanstack") || id.includes("react-query")) {
+              return "react-query";
+            }
+            if (id.includes("lucide-react")) {
+              return "icons";
+            }
+          }
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1200,
   },
 });

@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, Suspense, lazy } from "react";
 import { Zap as Lightning } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
 import { useAccount } from "wagmi";
-import { ChooseWalletDialog } from "@/components/ChooseWalletDialog";
 import { Logo } from "@/components/Logo";
+
+const ChooseWalletDialog = lazy(() => import("@/components/ChooseWalletDialog"));
 
 const Index = () => {
   const { isConnected } = useAccount();
@@ -101,11 +102,13 @@ const Index = () => {
       </Card>
 
       {/* Choose Wallet Dialog */}
-      <ChooseWalletDialog
-        open={walletDialogOpen}
-        onOpenChange={setWalletDialogOpen}
-        onWalletSelected={handleWalletSelected}
-      />
+      <Suspense fallback={null}>
+        <ChooseWalletDialog
+          open={walletDialogOpen}
+          onOpenChange={setWalletDialogOpen}
+          onWalletSelected={handleWalletSelected}
+        />
+      </Suspense>
     </div>
   );
 };

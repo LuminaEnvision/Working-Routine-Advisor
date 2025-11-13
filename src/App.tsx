@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Suspense, lazy } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiConfig } from "wagmi";
 import { wagmiConfig } from "@/lib/wagmi-config";
@@ -11,12 +12,13 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import Layout from "@/components/Layout";
-import Index from "@/pages/Index";
-import Onboarding from "@/pages/Onboarding";
-import DailyCheckIn from "@/pages/DailyCheckIn";
-import Recommendations from "@/pages/Recommendations";
-import Profile from "@/pages/Profile";
-import NotFound from "@/pages/NotFound";
+
+const Index = lazy(() => import("@/pages/Index"));
+const Onboarding = lazy(() => import("@/pages/Onboarding"));
+const DailyCheckIn = lazy(() => import("@/pages/DailyCheckIn"));
+const Recommendations = lazy(() => import("@/pages/Recommendations"));
+const Profile = lazy(() => import("@/pages/Profile"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,14 +45,22 @@ const App = () => (
                 }}
               >
                 <Layout>
-                  <Routes>
-                    <Route path="/" element={<Index />} />
-                    <Route path="/onboarding" element={<Onboarding />} />
-                    <Route path="/daily-checkin" element={<DailyCheckIn />} />
-                    <Route path="/recommendations" element={<Recommendations />} />
-                    <Route path="/profile" element={<Profile />} />
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
+                  <Suspense
+                    fallback={
+                      <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+                        Loading…
+                      </div>
+                    }
+                  >
+                    <Routes>
+                      <Route path="/" element={<Index />} />
+                      <Route path="/onboarding" element={<Onboarding />} />
+                      <Route path="/daily-checkin" element={<DailyCheckIn />} />
+                      <Route path="/recommendations" element={<Recommendations />} />
+                      <Route path="/profile" element={<Profile />} />
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                  </Suspense>
                 </Layout>
               </BrowserRouter>
             </TooltipProvider>
