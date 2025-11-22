@@ -1,7 +1,8 @@
 require("@nomicfoundation/hardhat-toolbox");
-// Note: hardhat-verify is ESM-only, so we'll load it dynamically if needed
-// require("@nomicfoundation/hardhat-verify");
 require("dotenv").config();
+
+// Note: @nomicfoundation/hardhat-verify is an ES module and cannot be required here
+// It will be loaded automatically by Hardhat when using verify:verify task
 
 const {
   PRIVATE_KEY,
@@ -55,7 +56,7 @@ module.exports = {
         network: "celo",
         chainId: 42220,
         urls: {
-          apiURL: "https://api.celoscan.io/api/v2",
+          apiURL: "https://api.celoscan.io/api",
           browserURL: "https://celoscan.io",
         },
       },

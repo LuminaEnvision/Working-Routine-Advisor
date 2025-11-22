@@ -11,7 +11,7 @@ import { useAccount } from "wagmi";
 import { useInsightsPayment } from "@/hooks/use-InsightsPayment";
 import { PaymentGate } from "@/components/PaymentGate";
 import { Link, useNavigate } from "react-router-dom";
-import { generateDailyQuestions, analyzeAndRecommend, type Question, type QuestionResponse, type CheckInData } from "@/lib/ai";
+import { generateDailyQuestions, analyzeAndRecommend, generateInsights, type Question, type QuestionResponse, type CheckInData, type AnalysisResponse } from "@/lib/ai";
 import { useCheckIns } from "@/contexts/CheckInContext";
 
 const DailyCheckIn = () => {
@@ -199,12 +199,56 @@ const DailyCheckIn = () => {
       toast.success('Check-in completed! Your personalized insights are ready in the Insights tab.');
     } catch (error) {
       console.error('Failed to analyze check-in:', error);
-      toast.error('Check-in saved, but analysis failed. Please try again later.');
+      
+      // Try to generate a basic fallback analysis using rule-based insights
+      let fallbackAnalysis: AnalysisResponse | undefined;
+      try {
+        const checkInsForFallback: CheckInData[] = [
+          {
+            answers: Object.fromEntries(
+              Object.entries(responses).map(([key, response]: [string, QuestionResponse]) => [
+                key,
+                questions.find(q => q.id === response.questionId)?.options.find(opt => opt.value === response.selectedOption)?.text || response.selectedOption,
+              ])
+            ),
+            timestamp: new Date().toISOString(),
+            responses,
+            questions,
+          },
+          ...getHistoricalData(7),
+        ];
+        
+        // Use rule-based insights as fallback
+        const ruleBasedInsights = await generateInsights(checkInsForFallback);
+        
+        // Convert to AnalysisResponse format
+        fallbackAnalysis = {
+          assessment: ruleBasedInsights.summary || 'Based on your check-in, continue tracking your daily habits.',
+          concerns: ruleBasedInsights.insights.slice(0, 3) || ['Consistency in tracking'],
+          recommendations: ruleBasedInsights.recommendations.slice(0, 5).map((rec, idx) => ({
+            priority: idx + 1,
+            category: 'general',
+            title: `Recommendation ${idx + 1}`,
+            action: rec,
+            why: 'Based on your check-in patterns',
+          })),
+          quickWins: ruleBasedInsights.recommendations.slice(0, 3) || [
+            'Drink a glass of water right now',
+            'Take 5 deep breaths to reduce stress',
+            'Go for a 10-minute walk',
+          ],
+          trackingMetrics: ['Daily check-in completion', 'Energy levels', 'Sleep quality'],
+        };
+      } catch (fallbackError) {
+        console.error('Fallback analysis also failed:', fallbackError);
+      }
+      
+      toast.error('Check-in saved, but AI analysis failed. Using fallback insights.');
       setIsAnalyzing(false);
       setAnalysisComplete(false);
-      setAnalysisError('We saved your check-in, but the AI analysis did not complete. Please view your Insights tab or try again later.');
+      setAnalysisError('We saved your check-in, but the AI analysis did not complete. Using rule-based insights instead.');
       
-      // Still save the check-in without analysis
+      // Save the check-in with fallback analysis if available
       const currentTime = new Date();
       const hour = currentTime.getHours();
       const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
@@ -220,6 +264,7 @@ const DailyCheckIn = () => {
         questions,
         responses,
         timeOfDay,
+        ...(fallbackAnalysis && { analysis: fallbackAnalysis }),
       };
 
       addCheckIn(checkInData);

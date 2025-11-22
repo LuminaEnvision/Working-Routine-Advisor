@@ -87,6 +87,10 @@ export default {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.8" },
         },
+        "pulse-subtle": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.95" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -94,6 +98,7 @@ export default {
         "fade-in": "fade-in 0.5s ease-out",
         "slide-up": "slide-up 0.6s ease-out",
         "pulse-soft": "pulse-soft 2s ease-in-out infinite",
+        "pulse-subtle": "pulse-subtle 3s ease-in-out infinite",
       },
       backgroundImage: {
         "gradient-primary": "var(--gradient-primary)",

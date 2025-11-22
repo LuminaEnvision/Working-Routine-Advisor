@@ -27,7 +27,17 @@ const Recommendations = () => {
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [insightsLoaded, setInsightsLoaded] = useState(false);
   const [showCooldownAfterInsights, setShowCooldownAfterInsights] = useState(false);
-  
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+
+  // Loading messages to cycle through
+  const loadingMessages = [
+    "Analyzing your check-in responses...",
+    "Consulting AI health coach...",
+    "Generating personalized recommendations...",
+    "Creating your meal plan...",
+    "Almost there..."
+  ];
+
   // Debug: Log check-ins to help diagnose issues
   useEffect(() => {
     console.log('Recommendations page - checkIns:', checkIns);
@@ -43,15 +53,15 @@ const Recommendations = () => {
       const timer1 = setTimeout(() => {
         refetchStatus();
       }, 3000);
-      
+
       const timer2 = setTimeout(() => {
         refetchStatus();
       }, 5000);
-      
+
       const timer3 = setTimeout(() => {
         refetchStatus();
       }, 10000);
-      
+
       return () => {
         clearTimeout(timer1);
         clearTimeout(timer2);
@@ -59,7 +69,7 @@ const Recommendations = () => {
       };
     }
   }, [checkIns.length, isConnected, refetchStatus]);
-  
+
   // Also refetch when component mounts or address changes
   useEffect(() => {
     if (isConnected) {
@@ -71,6 +81,19 @@ const Recommendations = () => {
   const latestCheckIn = checkIns.length > 0 ? checkIns[checkIns.length - 1] : null;
   const latestAnalysis = latestCheckIn?.analysis;
 
+  // Cycle through loading messages while insights are being generated
+  useEffect(() => {
+    if (isLoadingInsights) {
+      const interval = setInterval(() => {
+        setLoadingMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+      }, 2500); // Change message every 2.5 seconds
+
+      return () => clearInterval(interval);
+    } else {
+      setLoadingMessageIndex(0); // Reset when not loading
+    }
+  }, [isLoadingInsights, loadingMessages.length]);
+
   // Generate AI insights when check-ins change (for backward compatibility)
   useEffect(() => {
     if (checkIns.length > 0) {
@@ -78,7 +101,7 @@ const Recommendations = () => {
       setInsightsError(null);
       setInsightsLoaded(false);
       setShowCooldownAfterInsights(false);
-      
+
       generateInsights(checkIns)
         .then((result) => {
           setInsights(result);
@@ -86,21 +109,22 @@ const Recommendations = () => {
           setInsightsLoaded(true);
           if (result) {
             setInsightsError(null);
-            // After insights are loaded, wait a moment then show cooldown
-            setTimeout(() => {
-              setShowCooldownAfterInsights(true);
-            }, 500);
           }
+          // Show cooldown immediately after insights are loaded (no delay)
+          setShowCooldownAfterInsights(true);
         })
         .catch((error) => {
-          console.error('Failed to generate insights:', error);
-          setInsightsError('Failed to generate insights. Please try again later.');
+          console.error('❌ Failed to generate insights:', error);
+          console.error('Error details:', {
+            message: error?.message,
+            stack: error?.stack,
+            name: error?.name,
+          });
+          setInsightsError(`Failed to generate insights: ${error?.message || 'Unknown error'}. Please check your API keys in .env file.`);
           setIsLoadingInsights(false);
           setInsightsLoaded(true);
-          // Even on error, show cooldown after a delay
-          setTimeout(() => {
-            setShowCooldownAfterInsights(true);
-          }, 500);
+          // Show cooldown immediately after error (no delay)
+          setShowCooldownAfterInsights(true);
         });
     } else {
       setInsights(null);
@@ -215,17 +239,25 @@ const Recommendations = () => {
 
           {/* Loading State - Show when insights are being generated after check-in */}
           {isLoadingInsights && !latestAnalysis && (
-            <Card className="border-primary/20 bg-primary/5">
+            <Card className="border-primary/20 bg-primary/5 animate-pulse-subtle">
               <CardContent className="pt-6 pb-6">
                 <div className="flex flex-col items-center justify-center space-y-4 py-8">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                  <div className="text-center space-y-2">
-                    <p className="text-sm font-medium text-foreground">
-                      Generating your personalized insights...
+                  <div className="relative">
+                    <Loader2 className="w-10 h-10 animate-spin text-primary" />
+                    <Sparkles className="w-4 h-4 text-accent absolute -top-1 -right-1 animate-pulse" />
+                  </div>
+                  <div className="text-center space-y-3">
+                    <p className="text-sm font-medium text-foreground animate-fade-in">
+                      {loadingMessages[loadingMessageIndex]}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Analyzing your check-in responses and creating recommendations
+                      This may take a moment while we consult our AI health coach
                     </p>
+                    <div className="flex justify-center gap-1 pt-2">
+                      <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                      <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                      <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -421,8 +453,55 @@ const Recommendations = () => {
             </Card>
           )}
 
+          {/* Error Message - Show if insights failed to load */}
+          {insightsError && insightsLoaded && (
+            <Card className="border-destructive/20 bg-destructive/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm sm:text-base flex items-center gap-2 text-destructive">
+                  <Sparkles className="w-5 h-5" />
+                  Insights Error
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
+                  Failed to generate AI insights
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  {insightsError}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Please check your API keys in the .env file:
+                  <br />• VITE_GEMINI_API_KEY
+                  <br />• VITE_HUGGINGFACE_API_KEY
+                  <br />• VITE_OPENROUTER_API_KEY
+                </p>
+                <Button
+                  onClick={() => {
+                    setInsightsError(null);
+                    setIsLoadingInsights(true);
+                    generateInsights(checkIns)
+                      .then((result) => {
+                        setInsights(result);
+                        setIsLoadingInsights(false);
+                        setInsightsError(null);
+                      })
+                      .catch((error) => {
+                        console.error('Retry failed:', error);
+                        setInsightsError(`Failed: ${error?.message || 'Unknown error'}`);
+                        setIsLoadingInsights(false);
+                      });
+                  }}
+                  variant="outline"
+                  size="sm"
+                >
+                  Retry
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Legacy AI Insights Card (for backward compatibility) */}
-          {checkIns.length > 0 && !latestAnalysis && !isLoadingInsights && (
+          {checkIns.length > 0 && !latestAnalysis && !isLoadingInsights && !insightsError && (
             <Card className="border-primary/20 bg-primary/5">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm sm:text-base flex items-center gap-2">
@@ -434,16 +513,7 @@ const Recommendations = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {isLoadingInsights ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-primary mr-2" />
-                    <span className="text-sm text-muted-foreground">Generating insights...</span>
-                  </div>
-                ) : insightsError ? (
-                  <div className="text-sm text-muted-foreground text-center py-4">
-                    {insightsError}
-                  </div>
-                ) : insights ? (
+                {insights ? (
                   <>
                     {insights.summary && (
                       <div className="space-y-2">

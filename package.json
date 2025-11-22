@@ -10,6 +10,8 @@
     "compile": "npx hardhat compile",
     "deploy": "npx hardhat run scripts/deploy.cjs --network celo",
     "migrate": "npx hardhat run scripts/migrate-rewards.cjs --network celo",
+    "verify": "node scripts/verify-simple.cjs",
+    "flatten": "node scripts/flatten-contract.cjs",
     "test": "npx hardhat test"
   },
   "dependencies": {
