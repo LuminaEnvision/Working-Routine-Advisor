@@ -8,13 +8,16 @@
 ### 1. ✅ Integrate AI Engine for Personalized Insights
 
 **Implementation:**
-- Integrated **Google Gemini AI** (gemini-2.5-flash, gemini-2.0-flash, gemini-2.5-pro) as primary AI engine
-- Implemented **OpenRouter AI** (Grok-4.1-fast) for question generation and analysis
-- Added **Hugging Face API** (Mistral-7B-Instruct) as fallback option
-- Multi-tier fallback system ensures reliability even when APIs are unavailable
+- Integrated **Google Gemini AI** as the primary and only AI engine
+- Uses multiple Gemini models with automatic fallback:
+  - `gemini-2.0-flash-exp` (latest experimental, fastest)
+  - `gemini-exp-1206` (experimental from Dec 2024)
+  - `gemini-2.0-flash-thinking-exp-1219` (advanced reasoning)
+- Automatic retry logic with exponential backoff
+- Graceful fallback to static questions/insights if API fails
 
 **Files:**
-- `src/lib/ai.ts` - Complete AI service implementation (1,359 lines)
+- `src/lib/ai.ts` - Simplified AI service (600 lines, Gemini-only)
 - `src/pages/Recommendations.tsx` - AI insights UI integration
 
 **Features:**
@@ -22,6 +25,7 @@
 - Context-aware questions that adapt to previous check-ins
 - Comprehensive analysis with assessment, concerns, and recommendations
 - Meal plan generation with recipes, ingredients, and nutritional benefits
+- Free tier: 60 requests/minute, 1,500/day, 1M tokens/month
 
 ---
 
@@ -127,10 +131,11 @@ Rather than deploying a separate bot, we integrated the app directly into the Fa
 ## 📊 Technical Achievements
 
 ### AI Integration
-- **3 AI providers** with automatic fallback
-- **Rule-based fallback** for offline functionality
+- **1 AI provider** (Google Gemini) with 3 model fallbacks
+- **Automatic retry logic** with exponential backoff
 - **Context-aware prompts** for personalized insights
 - **JSON-structured responses** for reliable parsing
+- **Graceful degradation** with static fallbacks
 
 ### Blockchain Integration
 - **Base network** deployment
@@ -150,7 +155,7 @@ Rather than deploying a separate bot, we integrated the app directly into the Fa
 
 | Deliverable | Status | Implementation |
 |-------------|--------|----------------|
-| AI Engine Integration | ✅ Complete | Gemini + OpenRouter + Hugging Face |
+| AI Engine Integration | ✅ Complete | Google Gemini (3 model fallbacks) |
 | User Data Analysis | ✅ Complete | 6-category analysis with historical patterns |
 | Streak Tracking & Reports | ✅ Complete | Blockchain-based with smart contracts |
 | Farcaster/Telegram Bot | 🔄 Modified | Farcaster Mini App (better UX than bot) |

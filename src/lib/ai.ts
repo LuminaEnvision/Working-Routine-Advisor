@@ -1,27 +1,7 @@
 /**
  * AI Service for generating insights and handling chatbot queries
- * Uses OpenRouter AI, Hugging Face API (Mistral-7B-Instruct), or Google Gemini API
+ * Uses Google Gemini API only
  */
-
-// OpenRouter Configuration
-const getOpenRouterConfig = () => {
-  const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || '';
-  const baseURL = 'https://openrouter.ai/api/v1/chat/completions';
-  // Use free Grok model as default, fallback to env variable
-  const model = import.meta.env.VITE_OPENROUTER_MODEL || 'x-ai/grok-4.1-fast:free';
-
-  return {
-    apiKey,
-    baseURL,
-    model,
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://working-routine-advisor.vercel.app',
-      'X-Title': 'Working Routine Advisor',
-      'Content-Type': 'application/json',
-    },
-  };
-};
 
 interface CheckInData {
   answers: Record<string, string>;
@@ -92,24 +72,6 @@ interface InsightResponse {
 
 // Export types
 export type { CheckInData, Question, QuestionOption, QuestionResponse, AnalysisResponse, Recommendation, MealPlan, Meal };
-
-/**
- * Retry logic for API calls
- */
-async function apiCallWithRetry<T>(
-  apiFunction: () => Promise<T>,
-  maxRetries: number = 3
-): Promise<T> {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await apiFunction();
-    } catch (error) {
-      if (i === maxRetries - 1) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
-    }
-  }
-  throw new Error('Max retries exceeded');
-}
 
 /**
  * Fallback questions if AI fails
@@ -184,7 +146,79 @@ const FALLBACK_QUESTIONS: Question[] = [
 ];
 
 /**
- * Generate daily questions using OpenRouter AI
+ * Call Gemini API with retry logic
+ */
+async function callGeminiAPI(prompt: string, maxRetries: number = 3): Promise<string> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('VITE_GEMINI_API_KEY not configured');
+  }
+
+  const models = [
+    { name: 'gemini-2.0-flash-exp', version: 'v1beta' },
+    { name: 'gemini-exp-1206', version: 'v1beta' },
+    { name: 'gemini-2.0-flash-thinking-exp-1219', version: 'v1beta' },
+  ];
+
+  let lastError: Error | null = null;
+
+  for (const model of models) {
+    const url = `https://generativelanguage.googleapis.com/${model.version}/models/${model.name}:generateContent?key=${apiKey}`;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        console.log(`🔄 Trying Gemini model: ${model.name} (attempt ${attempt + 1}/${maxRetries})`);
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: prompt
+              }]
+            }],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 2000,
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!content) {
+          throw new Error('No content from Gemini API');
+        }
+
+        console.log(`✅ Successfully using Gemini model: ${model.name}`);
+        return content;
+
+      } catch (error: any) {
+        lastError = error;
+        console.error(`❌ ${model.name} attempt ${attempt + 1} failed:`, error.message);
+
+        if (attempt < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
+      }
+    }
+  }
+
+  throw lastError || new Error('All Gemini models failed');
+}
+
+/**
+ * Generate daily questions using Gemini AI
  */
 export async function generateDailyQuestions(
   userId: string,
@@ -194,7 +228,6 @@ export async function generateDailyQuestions(
   const hour = currentTime.getHours();
   const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
 
-  // Extract previous responses to ensure variation
   const previousResponses = previousCheckIn?.responses
     ? Object.values(previousCheckIn.responses).map(r => ({
       questionId: r.questionId,
@@ -218,12 +251,8 @@ CONTEXT:
 
 REQUIREMENTS:
 1. Questions must be relevant to ${timeOfDay} (e.g., morning: sleep quality, breakfast; evening: stress levels, dinner)
-2. **IMPORTANT: At least ONE question must be different from the previous check-in** - either:
-   - Ask about a different aspect of the same category (e.g., if you asked about sleep duration before, ask about sleep quality now)
-   - Ask a follow-up question based on their previous response (e.g., if they reported poor sleep, ask what they tried to improve it)
-   - Ask about a different category entirely
-   - Vary the wording or focus of at least one question
-3. If previous data shows issues, create follow-up questions (e.g., poor sleep last time → ask about sleep improvements attempted)
+2. At least ONE question must be different from the previous check-in
+3. If previous data shows issues, create follow-up questions
 4. Cover these key areas across the 6 questions:
    - Sleep/Energy levels
    - Nutrition/Meals
@@ -233,9 +262,8 @@ REQUIREMENTS:
    - Work productivity/Focus
 5. Each question must have 4 answer options
 6. Options should range from poor to excellent habits
-7. **Ensure variation**: Make sure at least one question is noticeably different from the previous check-in to keep it engaging
 
-FORMAT YOUR RESPONSE AS JSON:
+FORMAT YOUR RESPONSE AS JSON ONLY (no markdown, no code blocks):
 {
   "questions": [
     {
@@ -253,67 +281,24 @@ FORMAT YOUR RESPONSE AS JSON:
   ]
 }`;
 
-  const config = getOpenRouterConfig();
-
-  if (!config.apiKey) {
-    console.warn('VITE_OPENROUTER_API_KEY not set. Using fallback questions.');
-    return { questions: FALLBACK_QUESTIONS };
-  }
-
   try {
-    const result = await apiCallWithRetry(async () => {
-      const response = await fetch(config.baseURL, {
-        method: 'POST',
-        headers: config.headers,
-        body: JSON.stringify({
-          model: config.model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert health coach who creates personalized daily check-in questions. Always respond with valid JSON only.',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          temperature: 0.7,
-        }),
-      });
+    const content = await callGeminiAPI(prompt);
+    const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const parsed = JSON.parse(cleanedContent);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
-      }
+    if (!parsed.questions || !Array.isArray(parsed.questions) || parsed.questions.length !== 6) {
+      throw new Error('Invalid question structure from API');
+    }
 
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content;
-
-      if (!content) {
-        throw new Error('No content from OpenRouter API');
-      }
-
-      // Parse JSON response
-      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const parsed = JSON.parse(cleanedContent);
-
-      // Validate structure
-      if (!parsed.questions || !Array.isArray(parsed.questions) || parsed.questions.length !== 6) {
-        throw new Error('Invalid question structure from API');
-      }
-
-      return parsed;
-    });
-
-    return result;
+    return parsed;
   } catch (error) {
-    console.warn('OpenRouter API failed, using fallback questions:', error);
+    console.warn('Gemini API failed, using fallback questions:', error);
     return { questions: FALLBACK_QUESTIONS };
   }
 }
 
 /**
- * Analyze responses and generate recommendations using OpenRouter AI
+ * Analyze responses and generate recommendations using Gemini AI
  */
 export async function analyzeAndRecommend(
   userResponses: Record<string, QuestionResponse>,
@@ -352,7 +337,7 @@ PROVIDE DETAILED ANALYSIS AND RECOMMENDATIONS:
 
 6. **Progress Tracking**: Specific metrics they should monitor
 
-FORMAT AS JSON:
+FORMAT AS JSON ONLY (no markdown, no code blocks):
 {
   "assessment": "string",
   "concerns": ["concern1", "concern2"],
@@ -380,11 +365,18 @@ FORMAT AS JSON:
   "trackingMetrics": ["metric1", "metric2"]
 }`;
 
-  const config = getOpenRouterConfig();
+  try {
+    const content = await callGeminiAPI(prompt);
+    const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const parsed = JSON.parse(cleanedContent);
 
-  if (!config.apiKey) {
-    console.warn('VITE_OPENROUTER_API_KEY not set. Using fallback analysis.');
-    // Return a basic fallback analysis
+    if (!parsed.assessment || !parsed.recommendations || !Array.isArray(parsed.recommendations)) {
+      throw new Error('Invalid analysis structure from API');
+    }
+
+    return parsed as AnalysisResponse;
+  } catch (error) {
+    console.warn('Gemini analysis failed, using fallback:', error);
     return {
       assessment: 'Based on your check-in, continue tracking your daily habits to identify patterns and areas for improvement.',
       concerns: ['Consistency in tracking', 'Building sustainable habits'],
@@ -405,161 +397,14 @@ FORMAT AS JSON:
       trackingMetrics: ['Daily check-in completion', 'Energy levels', 'Sleep quality'],
     };
   }
-
-  try {
-    const result = await apiCallWithRetry(async () => {
-      const response = await fetch(config.baseURL, {
-        method: 'POST',
-        headers: config.headers,
-        body: JSON.stringify({
-          model: config.model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert health coach providing personalized lifestyle recommendations. Always respond with valid JSON only.',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          temperature: 0.8,
-          max_tokens: 3000,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content;
-
-      if (!content) {
-        throw new Error('No content from OpenRouter API');
-      }
-
-      // Parse JSON response
-      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const parsed = JSON.parse(cleanedContent);
-
-      // Validate structure
-      if (!parsed.assessment || !parsed.recommendations || !Array.isArray(parsed.recommendations)) {
-        throw new Error('Invalid analysis structure from API');
-      }
-
-      return parsed as AnalysisResponse;
-    });
-
-    return result;
-  } catch (error) {
-    console.warn('OpenRouter analysis failed, trying Gemini/Hugging Face fallback:', error);
-
-    // Try Gemini or Hugging Face as fallback
-    const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    const hfApiKey = import.meta.env.VITE_HUGGINGFACE_API_KEY;
-
-    // Convert historical data to CheckInData format for generateInsights
-    const checkInsForAnalysis: CheckInData[] = historicalData.length > 0
-      ? historicalData
-      : [{
-        answers: Object.fromEntries(
-          Object.entries(userResponses).map(([key, response]) => [
-            key,
-            response.selectedOption
-          ])
-        ),
-        timestamp: new Date().toISOString(),
-        responses: userResponses,
-      }];
-
-    // Try Gemini first
-    if (geminiApiKey) {
-      try {
-        console.log('Trying Gemini API for analysis...');
-        const geminiResult = await generateInsightsWithGemini(checkInsForAnalysis, geminiApiKey);
-        // Convert InsightResponse to AnalysisResponse format
-        return {
-          assessment: geminiResult.summary || 'Based on your check-in, continue tracking your daily habits.',
-          concerns: geminiResult.insights.slice(0, 3) || ['Consistency in tracking'],
-          recommendations: geminiResult.recommendations.slice(0, 5).map((rec, idx) => ({
-            priority: idx + 1,
-            category: 'general',
-            title: `Recommendation ${idx + 1}`,
-            action: rec,
-            why: 'Based on your check-in patterns',
-          })),
-          quickWins: geminiResult.recommendations.slice(0, 3) || [
-            'Drink a glass of water right now',
-            'Take 5 deep breaths to reduce stress',
-            'Go for a 10-minute walk',
-          ],
-          trackingMetrics: ['Daily check-in completion', 'Energy levels', 'Sleep quality'],
-        };
-      } catch (geminiError) {
-        console.warn('Gemini fallback also failed:', geminiError);
-      }
-    }
-
-    // Try Hugging Face as last resort
-    if (hfApiKey) {
-      try {
-        console.log('Trying Hugging Face API for analysis...');
-        const hfResult = await generateInsightsWithHF(checkInsForAnalysis, hfApiKey);
-        // Convert InsightResponse to AnalysisResponse format
-        return {
-          assessment: hfResult.summary || 'Based on your check-in, continue tracking your daily habits.',
-          concerns: hfResult.insights.slice(0, 3) || ['Consistency in tracking'],
-          recommendations: hfResult.recommendations.slice(0, 5).map((rec, idx) => ({
-            priority: idx + 1,
-            category: 'general',
-            title: `Recommendation ${idx + 1}`,
-            action: rec,
-            why: 'Based on your check-in patterns',
-          })),
-          quickWins: hfResult.recommendations.slice(0, 3) || [
-            'Drink a glass of water right now',
-            'Take 5 deep breaths to reduce stress',
-            'Go for a 10-minute walk',
-          ],
-          trackingMetrics: ['Daily check-in completion', 'Energy levels', 'Sleep quality'],
-        };
-      } catch (hfError) {
-        console.warn('Hugging Face fallback also failed:', hfError);
-      }
-    }
-
-    // Final fallback: Use rule-based analysis from check-in data
-    console.warn('All API calls failed, using rule-based fallback analysis');
-    const ruleBasedInsights = getMockInsights(checkInsForAnalysis);
-    return {
-      assessment: ruleBasedInsights.summary || 'Based on your check-in, continue tracking your daily habits to identify patterns and areas for improvement.',
-      concerns: ruleBasedInsights.insights.slice(0, 3) || ['Consistency in tracking', 'Building sustainable habits'],
-      recommendations: ruleBasedInsights.recommendations.slice(0, 5).map((rec, idx) => ({
-        priority: idx + 1,
-        category: 'general',
-        title: `Recommendation ${idx + 1}`,
-        action: rec,
-        why: 'Based on your check-in patterns and lifestyle habits',
-      })),
-      quickWins: ruleBasedInsights.recommendations.slice(0, 3) || [
-        'Drink a glass of water right now',
-        'Take 5 deep breaths to reduce stress',
-        'Go for a 10-minute walk',
-      ],
-      trackingMetrics: ['Daily check-in completion', 'Energy levels', 'Sleep quality'],
-    };
-  }
 }
 
 /**
- * Generate insights using Hugging Face API (Mistral-7B-Instruct)
+ * Generate insights from check-in history using Gemini AI
  */
-async function generateInsightsWithHF(checkIns: CheckInData[], apiKey: string): Promise<InsightResponse> {
-  // Prepare check-in history
+export async function generateInsights(checkIns: CheckInData[]): Promise<InsightResponse> {
   const historyText = checkIns
-    .slice(-7) // Last 7 check-ins
+    .slice(-7)
     .map((checkIn, idx) => {
       const date = new Date(checkIn.timestamp).toLocaleDateString();
       const answers = Object.entries(checkIn.answers)
@@ -569,790 +414,115 @@ async function generateInsightsWithHF(checkIns: CheckInData[], apiKey: string): 
     })
     .join('\n');
 
-  const prompt = `<s>[INST] You are a productivity and lifestyle coach analyzing daily check-in data.
-
-Based on the following check-in history, provide personalized, actionable insights:
-
-${historyText}
-
-The check-in questions are:
-- focusSessions: How many focused work sessions completed
-- exercise: Physical activity level (No movement, Light walk, Moderate, Intense workout, Multiple sessions)
-- meals: Meal quality (Mostly processed/fast food, Some healthy choices, Balanced meals, Very nutritious, Perfectly planned)
-- distractions: Top distractions (Social media, Emails, Meetings, Phone calls, None)
-- energy: Current energy level (Very low, Low, Moderate, High, Very high)
-- satisfaction: Productivity satisfaction (1-5 scale)
-
-IMPORTANT: Provide SPECIFIC, ACTIONABLE recommendations based on their actual answers:
-- If meals are "Mostly processed/fast food" → Provide specific brain food recipes and meal suggestions
-- If energy is "Very low" or "Low" → Suggest specific sleep schedules, wake times, and energy-boosting habits
-- If exercise is "No movement" → Suggest specific exercise routines and movement breaks
-- If distractions are high → Provide specific strategies to minimize those distractions
-- If focusSessions are low → Suggest specific techniques to improve focus
-
-Please provide your response as valid JSON only (no markdown, no code blocks):
-{
-  "insights": ["insight 1", "insight 2", ...],
-  "summary": "brief summary text",
-  "recommendations": ["specific recommendation 1", "specific recommendation 2", ...]
-}
-
-Format your response as JSON only. [/INST]`;
-
-  const model = 'mistralai/Mistral-7B-Instruct-v0.2';
-
-  // Note: Hugging Face Inference API has CORS restrictions for browser requests
-  // For production, you'll need a backend proxy or use Hugging Face's hosted endpoints
-  // For now, we'll try the direct API but expect it may fail due to CORS
-  const url = `https://api-inference.huggingface.co/models/${model}`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        inputs: prompt,
-        parameters: {
-          temperature: 0.7,
-          max_new_tokens: 1000,
-          return_full_text: false,
-        },
-      }),
-      // Note: CORS may block this request from browser
-      // Consider using a backend proxy for production
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Hugging Face API error: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-
-    // Handle array response (Hugging Face returns array)
-    const result = Array.isArray(data) ? data[0] : data;
-    const content = result?.generated_text || result?.text || '';
-
-    if (!content) {
-      throw new Error('No content from Hugging Face API');
-    }
-
-    // Parse JSON response (remove markdown code blocks if present)
-    try {
-      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const parsed = JSON.parse(cleanedContent);
-
-      return {
-        insights: parsed.insights || [],
-        summary: parsed.summary || '',
-        recommendations: parsed.recommendations || [],
-      };
-    } catch (parseError) {
-      console.error('❌ Failed to parse Hugging Face API response:', {
-        parseError,
-        content: content.substring(0, 200),
-      });
-      throw new Error(`Failed to parse Hugging Face API response: ${parseError}. Content: ${content.substring(0, 200)}`);
-    }
-  } catch (error: any) {
-    // Check if it's a CORS or network error
-    if (error?.message?.includes('CORS') || error?.message?.includes('Failed to fetch') || error?.name === 'TypeError') {
-      console.warn('Hugging Face API CORS error: Direct browser access is blocked. Using rule-based recommendations.');
-      throw new Error('CORS_ERROR: Hugging Face Inference API requires a backend proxy for browser access.');
-    }
-    console.error('Hugging Face API error:', error);
-    throw error;
-  }
-}
-
-/**
- * Generate insights using Gemini API (gemini-pro)
- */
-async function generateInsightsWithGemini(checkIns: CheckInData[], apiKey: string): Promise<InsightResponse> {
-  console.log('🔍 generateInsightsWithGemini called with:', {
-    checkInsCount: checkIns.length,
-    apiKeyLength: apiKey?.length || 0,
-  });
-
-  // Prepare check-in history for AI
-  const historyText = checkIns
-    .slice(-7) // Last 7 check-ins
-    .map((checkIn, idx) => {
-      const date = new Date(checkIn.timestamp).toLocaleDateString();
-      const answers = Object.entries(checkIn.answers)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join(', ');
-      return `Check-in ${idx + 1} (${date}): ${answers}`;
-    })
-    .join('\n');
-
-  // Build a comprehensive prompt based on user's instructions
   const prompt = `You are a health and productivity coach analyzing daily check-in data.
 
 Analyze this person's daily habits and provide recommendations:
 
 ${historyText}
 
-The check-in questions are:
+The check-in questions cover:
 - focusSessions: How many focused work sessions completed
-- exercise: Physical activity level (No movement, Light walk, Moderate, Intense workout, Multiple sessions)
-- meals: Meal quality (Mostly processed/fast food, Some healthy choices, Balanced meals, Very nutritious, Perfectly planned)
-- distractions: Top distractions (Social media, Emails, Meetings, Phone calls, None)
-- energy: Current energy level (Very low, Low, Moderate, High, Very high)
-- satisfaction: Productivity satisfaction (1-5 scale)
+- exercise: Physical activity level
+- meals: Meal quality
+- distractions: Top distractions
+- energy: Current energy level
+- satisfaction: Productivity satisfaction
 
-IMPORTANT: Provide SPECIFIC, ACTIONABLE recommendations based on their actual answers:
-- If meals are "Mostly processed/fast food" → Provide specific brain food recipes and meal suggestions
-- If energy is "Very low" or "Low" → Suggest specific sleep schedules, wake times, and energy-boosting habits
-- If exercise is "No movement" → Suggest specific exercise routines and movement breaks
-- If distractions are high → Provide specific strategies to minimize those distractions
-- If focusSessions are low → Suggest specific techniques to improve focus
-
-Provide 3-5 specific, actionable recommendations to improve their health and productivity.
+IMPORTANT: Provide SPECIFIC, ACTIONABLE recommendations based on their actual answers.
 
 Format your response as JSON only (no markdown, no code blocks):
 {
   "insights": ["insight 1", "insight 2", "insight 3"],
   "summary": "brief summary text (2-3 sentences)",
-  "recommendations": ["specific recommendation 1", "specific recommendation 2", "specific recommendation 3", "specific recommendation 4", "specific recommendation 5"]
+  "recommendations": ["specific recommendation 1", "specific recommendation 2", "specific recommendation 3"]
 }`;
 
-  // Try gemini-2.5-flash first (latest available model), then fallback to other versions
-  const models = [
-    { name: 'gemini-2.5-flash', version: 'v1' }, // Fast and free tier (latest)
-    { name: 'gemini-2.0-flash', version: 'v1' }, // Alternative fast model
-    { name: 'gemini-2.5-pro', version: 'v1' }, // More capable (may have rate limits)
-  ];
-
-  let lastError: string = '';
-  let response: Response | null = null;
-  let lastErrorDetails: any = null;
-
-  // Try each model/API version combination
-  for (const modelConfig of models) {
-    const url = `https://generativelanguage.googleapis.com/${modelConfig.version}/models/${modelConfig.name}:generateContent?key=${apiKey}`;
-
-    console.log(`🔄 Trying Gemini model: ${modelConfig.name} (${modelConfig.version})`);
-
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: prompt
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 1000,
-          },
-        }),
-      });
-
-      if (response.ok) {
-        console.log(`✅ Successfully using Gemini model: ${modelConfig.name} (${modelConfig.version})`);
-        break; // Success! Use this response
-      } else {
-        const errorText = await response.text();
-        lastError = `Model ${modelConfig.name} (${modelConfig.version}) failed: ${response.status}`;
-        lastErrorDetails = { status: response.status, statusText: response.statusText, body: errorText };
-        console.error(`❌ ${lastError}`, lastErrorDetails);
-        response = null;
-      }
-    } catch (error: any) {
-      lastError = `Model ${modelConfig.name} (${modelConfig.version}) error: ${error?.message || error}`;
-      lastErrorDetails = error;
-      console.error(`❌ ${lastError}`, error);
-      response = null;
-    }
-  }
-
-  if (!response || !response.ok) {
-    const errorMessage = `Gemini API error: All model attempts failed. Last error: ${lastError}`;
-    console.error('❌ Gemini API completely failed:', {
-      errorMessage,
-      lastErrorDetails,
-      modelsAttempted: models.length,
-    });
-    throw new Error(errorMessage);
-  }
-
-  const data = await response.json();
-  console.log('📦 Gemini API response received:', { hasCandidates: !!data.candidates });
-
-  const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!content) {
-    console.error('❌ No content in Gemini response:', data);
-    throw new Error('No content from Gemini API. Response: ' + JSON.stringify(data));
-  }
-
-  // Parse JSON response (remove markdown code blocks if present)
   try {
+    const content = await callGeminiAPI(prompt);
     const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(cleanedContent);
 
-    console.log('✅ Successfully parsed Gemini response');
     return {
       insights: parsed.insights || [],
       summary: parsed.summary || '',
       recommendations: parsed.recommendations || [],
     };
-  } catch (parseError) {
-    console.error('❌ Failed to parse Gemini API response:', {
-      parseError,
-      content: content.substring(0, 200),
-    });
-    throw new Error(`Failed to parse Gemini API response: ${parseError}. Content: ${content.substring(0, 200)}`);
-  }
-}
-
-export const generateInsights = async (checkIns: CheckInData[]): Promise<InsightResponse> => {
-  const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  const hfApiKey = import.meta.env.VITE_HUGGINGFACE_API_KEY;
-  const openRouterApiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-
-  console.log('🔍 generateInsights called with:', {
-    checkInsCount: checkIns.length,
-    hasGeminiKey: !!geminiApiKey,
-    hasHFKey: !!hfApiKey,
-    hasOpenRouterKey: !!openRouterApiKey,
-  });
-
-  // Try OpenRouter first (most reliable)
-  if (openRouterApiKey) {
-    try {
-      console.log('🚀 Attempting OpenRouter API for insights...');
-      const config = getOpenRouterConfig();
-
-      console.log('📋 OpenRouter config:', {
-        hasApiKey: !!config.apiKey,
-        apiKeyLength: config.apiKey?.length || 0,
-        baseURL: config.baseURL,
-        model: config.model,
-        hasHeaders: !!config.headers,
-      });
-
-      const checkInText = checkIns
-        .slice(-7)
-        .map((checkIn, idx) => {
-          const date = new Date(checkIn.timestamp).toLocaleDateString();
-          const answers = Object.entries(checkIn.answers)
-            .map(([key, value]) => `${key}: ${value}`)
-            .join(', ');
-          return `Check-in ${idx + 1} (${date}): ${answers}`;
-        })
-        .join('\n');
-
-      const prompt = `Analyze this user's daily check-in data and provide personalized insights:
-
-${checkInText}
-
-Provide insights as JSON:
-{
-  "insights": ["insight 1", "insight 2", "insight 3"],
-  "summary": "brief summary",
-  "recommendations": ["rec 1", "rec 2", "rec 3", "rec 4", "rec 5"]
-}`;
-
-      const requestBody = {
-        model: config.model,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a health and productivity coach providing personalized insights. Always respond with valid JSON only.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 1500,
-      };
-
-      console.log('📤 OpenRouter request:', {
-        url: config.baseURL,
-        model: requestBody.model,
-        messageCount: requestBody.messages.length,
-        promptLength: prompt.length,
-      });
-
-      const response = await fetch(config.baseURL, {
-        method: 'POST',
-        headers: config.headers,
-        body: JSON.stringify(requestBody),
-      });
-
-      console.log('📥 OpenRouter response status:', response.status, response.statusText);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ OpenRouter API error response:', {
-          status: response.status,
-          statusText: response.statusText,
-          errorText: errorText.substring(0, 500),
-        });
-        throw new Error(`OpenRouter API error: ${response.status} - ${errorText.substring(0, 200)}`);
-      }
-
-      const data = await response.json();
-      console.log('📦 OpenRouter response data:', {
-        hasChoices: !!data.choices,
-        choicesLength: data.choices?.length || 0,
-        hasError: !!data.error,
-        error: data.error,
-      });
-
-      const content = data.choices?.[0]?.message?.content;
-
-      if (!content) {
-        console.error('❌ No content in OpenRouter response:', data);
-        throw new Error('No content from OpenRouter API. Response: ' + JSON.stringify(data).substring(0, 500));
-      }
-
-      console.log('📝 OpenRouter content received, length:', content.length);
-
-      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      let parsed;
-      try {
-        parsed = JSON.parse(cleanedContent);
-      } catch (parseError) {
-        console.error('❌ Failed to parse OpenRouter JSON:', {
-          parseError,
-          cleanedContent: cleanedContent.substring(0, 500),
-        });
-        throw new Error(`Failed to parse OpenRouter JSON: ${parseError}. Content: ${cleanedContent.substring(0, 200)}`);
-      }
-
-      console.log('✅ OpenRouter API success! Parsed response:', {
-        hasInsights: !!parsed.insights,
-        insightsCount: parsed.insights?.length || 0,
-        hasSummary: !!parsed.summary,
-        hasRecommendations: !!parsed.recommendations,
-        recommendationsCount: parsed.recommendations?.length || 0,
-      });
-
-      return {
-        insights: parsed.insights || [],
-        summary: parsed.summary || '',
-        recommendations: parsed.recommendations || [],
-      };
-    } catch (error: any) {
-      console.error('❌ OpenRouter API failed:', {
-        error: error?.message || error,
-        stack: error?.stack,
-        name: error?.name,
-      });
-      // Continue to try other APIs
-    }
-  }
-
-  // Try Gemini first (works from browser, no CORS issues)
-  if (geminiApiKey) {
-    try {
-      console.log('🚀 Attempting Gemini API for insights...');
-      const result = await generateInsightsWithGemini(checkIns, geminiApiKey);
-      console.log('✅ Gemini API success!');
-      return result;
-    } catch (error: any) {
-      console.error('❌ Gemini API failed:', error);
-      console.error('Error details:', {
-        message: error?.message,
-        stack: error?.stack,
-      });
-      // Fall through to try other options
-    }
-  }
-
-  // Try Hugging Face as fallback (may have CORS issues)
-  if (hfApiKey) {
-    try {
-      console.log('🚀 Attempting Hugging Face API for insights...');
-      const result = await generateInsightsWithHF(checkIns, hfApiKey);
-      console.log('✅ Hugging Face API success!');
-      return result;
-    } catch (error: any) {
-      console.error('❌ Hugging Face API failed:', error);
-      // If CORS error, skip Hugging Face
-      if (error?.message?.includes('CORS_ERROR') || error?.message?.includes('Failed to fetch') || error?.name === 'TypeError') {
-        console.error('CORS error - Hugging Face requires backend proxy');
-      }
-      // Don't return fallback - throw error instead
-      throw new Error(`All AI APIs failed. Last error: ${error?.message || 'Unknown error'}`);
-    }
-  }
-
-  // No API keys configured
-  if (!geminiApiKey && !hfApiKey && !openRouterApiKey) {
-    throw new Error('No AI API keys configured. Please set VITE_GEMINI_API_KEY, VITE_HUGGINGFACE_API_KEY, or VITE_OPENROUTER_API_KEY in your .env file.');
-  }
-
-  // All APIs failed
-  throw new Error('All AI APIs failed. Please check your API keys and network connection.');
-};
-
-/**
- * Handle chatbot query using Hugging Face API
- */
-async function handleChatbotQueryWithHF(
-  query: string,
-  checkIns: CheckInData[],
-  previousInsights: InsightResponse | undefined,
-  apiKey: string
-): Promise<string> {
-  const historyText = checkIns
-    .slice(-7)
-    .map((checkIn, idx) => {
-      const date = new Date(checkIn.timestamp).toLocaleDateString();
-      const answers = Object.entries(checkIn.answers)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join(', ');
-      return `Check-in ${idx + 1} (${date}): ${answers}`;
-    })
-    .join('\n');
-
-  const contextText = previousInsights
-    ? `Previous insights: ${previousInsights.summary}\nKey insights: ${previousInsights.insights.join(', ')}`
-    : 'No previous insights available.';
-
-  const prompt = `<s>[INST] You are a helpful productivity and lifestyle coach. The user has been tracking their daily habits through check-ins.
-
-Check-in history:
-${historyText}
-
-${contextText}
-
-User question: ${query}
-
-Provide a helpful, concise answer (2-3 sentences max) that relates to their check-in data and lifestyle patterns. [/INST]`;
-
-  const model = 'mistralai/Mistral-7B-Instruct-v0.2';
-  const url = `https://api-inference.huggingface.co/models/${model}`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        inputs: prompt,
-        parameters: {
-          temperature: 0.7,
-          max_new_tokens: 300,
-          return_full_text: false,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Hugging Face API error: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    const result = Array.isArray(data) ? data[0] : data;
-    const content = result?.generated_text || result?.text || '';
-
-    return content || 'Sorry, I could not generate a response.';
   } catch (error) {
-    console.error('Chatbot query failed:', error);
-    return "I'm having trouble processing that right now. Please try again later or check your API configuration.";
+    console.warn('Gemini insights failed, using fallback:', error);
+    return getMockInsights(checkIns);
   }
 }
 
 /**
- * Handle chatbot query using Gemini API
- */
-async function handleChatbotQueryWithGemini(
-  query: string,
-  checkIns: CheckInData[],
-  previousInsights: InsightResponse | undefined,
-  apiKey: string
-): Promise<string> {
-  const historyText = checkIns
-    .slice(-7)
-    .map((checkIn, idx) => {
-      const date = new Date(checkIn.timestamp).toLocaleDateString();
-      const answers = Object.entries(checkIn.answers)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join(', ');
-      return `Check-in ${idx + 1} (${date}): ${answers}`;
-    })
-    .join('\n');
-
-  const contextText = previousInsights
-    ? `Previous insights: ${previousInsights.summary}\nKey insights: ${previousInsights.insights.join(', ')}`
-    : 'No previous insights available.';
-
-  const prompt = `You are a helpful productivity and lifestyle coach. The user has been tracking their daily habits through check-ins.
-
-Check-in history:
-${historyText}
-
-${contextText}
-
-User question: ${query}
-
-Provide a helpful, concise answer (2-3 sentences max) that relates to their check-in data and lifestyle patterns.`;
-
-  // Try gemini-2.5-flash first (latest available model), then fallback to other versions
-  // Note: gemini-pro is deprecated, use gemini-2.5-flash or gemini-2.0-flash instead
-  const models = [
-    { name: 'gemini-2.5-flash', version: 'v1' }, // Fast and free tier (latest)
-    { name: 'gemini-2.0-flash', version: 'v1' }, // Alternative fast model
-    { name: 'gemini-2.5-pro', version: 'v1' }, // More capable (may have rate limits)
-  ];
-
-  let lastError: string = '';
-  let response: Response | null = null;
-
-  // Try each model/API version combination
-  for (const modelConfig of models) {
-    const url = `https://generativelanguage.googleapis.com/${modelConfig.version}/models/${modelConfig.name}:generateContent?key=${apiKey}`;
-
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: prompt
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 300,
-          },
-        }),
-      });
-
-      if (response.ok) {
-        console.log(`Successfully using Gemini model: ${modelConfig.name} (${modelConfig.version})`);
-        break; // Success! Use this response
-      } else {
-        const errorText = await response.text();
-        lastError = `Model ${modelConfig.name} (${modelConfig.version}) failed: ${response.status} - ${errorText}`;
-        console.warn(lastError);
-        response = null;
-      }
-    } catch (error) {
-      lastError = `Model ${modelConfig.name} (${modelConfig.version}) error: ${error}`;
-      console.warn(lastError);
-      response = null;
-    }
-  }
-
-  if (!response || !response.ok) {
-    throw new Error(`Gemini API error: All model attempts failed. Last error: ${lastError}`);
-  }
-
-  const data = await response.json();
-  const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  return content || 'Sorry, I could not generate a response.';
-}
-
-export const handleChatbotQuery = async (
-  query: string,
-  checkIns: CheckInData[],
-  previousInsights?: InsightResponse
-): Promise<string> => {
-  const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  const hfApiKey = import.meta.env.VITE_HUGGINGFACE_API_KEY;
-
-  // Try Gemini first (works from browser, no CORS issues)
-  if (geminiApiKey) {
-    try {
-      return await handleChatbotQueryWithGemini(query, checkIns, previousInsights, geminiApiKey);
-    } catch (error) {
-      console.warn('Gemini chatbot failed, trying fallback options:', error);
-      // Fall through to try other options
-    }
-  }
-
-  // Try Hugging Face as fallback (may have CORS issues)
-  if (hfApiKey) {
-    try {
-      return await handleChatbotQueryWithHF(query, checkIns, previousInsights, hfApiKey);
-    } catch (error) {
-      console.warn('Hugging Face chatbot failed, falling back to default response:', error);
-      return "I'm here to help! Regular check-ins help build better habits and productivity patterns.";
-    }
-  }
-
-  // Fallback response
-  return "I'm here to help! To enable AI chat, please set VITE_GEMINI_API_KEY in your environment variables. For now, I can tell you that regular check-ins help build better habits and productivity patterns.";
-};
-
-/**
- * Rule-based insights generator - analyzes check-in data and provides specific recommendations
+ * Mock insights for fallback
  */
 function getMockInsights(checkIns: CheckInData[]): InsightResponse {
-  const count = checkIns.length;
+  const recentCheckIn = checkIns[checkIns.length - 1];
+  const answers = recentCheckIn?.answers || {};
 
-  if (count === 0) {
-    return {
-      insights: [
-        'Start your journey by completing your first check-in!',
-        'Regular check-ins help you track your daily habits and productivity.',
-        'Consistency is key to building better routines.',
-      ],
-      summary: 'Complete your first check-in to start receiving personalized insights and recommendations.',
-      recommendations: [
-        'Complete your first check-in to begin tracking your habits.',
-        'Try to check in at the same time each day to build a routine.',
-        'Be honest with your answers for the most accurate insights.',
-      ],
-    };
-  }
-
-  // Analyze recent check-ins (last 7)
-  const recent = checkIns.slice(-7);
-
-  // Helper function to find answers by category or question ID
-  const getAnswersByCategory = (checkIns: CheckInData[], category: string): string[] => {
-    return checkIns
-      .map(c => {
-        // Try to find by category in questions array
-        if (c.questions) {
-          const question = c.questions.find(q => q.category === category);
-          if (question) {
-            const response = c.responses?.[question.id.toString()];
-            if (response) {
-              return question.options.find(opt => opt.value === response.selectedOption)?.text || '';
-            }
-          }
-        }
-        // Fallback: try to find by string key (legacy format)
-        // Check all answer keys for values that match the category pattern
-        return Object.values(c.answers).find(v => v && typeof v === 'string') || '';
-      })
-      .filter(Boolean);
-  };
-
-  // Helper function to find answers by question ID (string key)
-  const getAnswersByQuestionId = (checkIns: CheckInData[], questionId: string): string[] => {
-    return checkIns
-      .map(c => c.answers[questionId] || '')
-      .filter(Boolean);
-  };
-
-  // Analyze sleep patterns - look for sleep-related answers
-  const sleepAnswers = getAnswersByCategory(recent, 'sleep').length > 0
-    ? getAnswersByCategory(recent, 'sleep')
-    : getAnswersByQuestionId(recent, '1'); // Fallback to question ID "1"
-  const lowSleep = sleepAnswers.filter(s =>
-    s.includes('<5') || s.includes('5-6') || s.includes('Less than 5')
-  ).length;
-  const goodSleep = sleepAnswers.filter(s =>
-    s.includes('7-8') || s.includes('More than 8') || s.includes('7-9')
-  ).length;
-
-  // Analyze exercise patterns - look for activity-related answers
-  const exerciseAnswers = getAnswersByCategory(recent, 'activity').length > 0
-    ? getAnswersByCategory(recent, 'activity')
-    : getAnswersByQuestionId(recent, '4'); // Fallback to question ID "4"
-  const noExercise = exerciseAnswers.filter(e =>
-    e.includes('No movement') || e === 'No' || e.includes('No exercise')
-  ).length;
-  const hasExercise = exerciseAnswers.filter(e =>
-    !e.includes('No movement') && e !== 'No' && !e.includes('No exercise')
-  ).length;
-
-  // Analyze meal patterns - look for nutrition-related answers
-  const mealAnswers = getAnswersByCategory(recent, 'nutrition').length > 0
-    ? getAnswersByCategory(recent, 'nutrition')
-    : getAnswersByQuestionId(recent, '3'); // Fallback to question ID "3"
-  const lowMeals = mealAnswers.filter(m =>
-    m.includes('0-1') || m.includes('1-2') || m.includes('Less than')
-  ).length;
-  const goodMeals = mealAnswers.filter(m =>
-    m.includes('3') || m.includes('4+') || m.includes('Balanced') || m.includes('nutritious')
-  ).length;
-
-  // Analyze focus patterns - look for productivity-related answers
-  const focusAnswers = getAnswersByCategory(recent, 'productivity').length > 0
-    ? getAnswersByCategory(recent, 'productivity')
-    : getAnswersByQuestionId(recent, '6'); // Fallback to question ID "6"
-  const lowFocus = focusAnswers.filter(f =>
-    f.includes('Not at all') || f.includes('Somewhat') || f.includes('0-1') || f.includes('Low')
-  ).length;
-  const goodFocus = focusAnswers.filter(f =>
-    f.includes('Mostly') || f.includes('Completely') || f.includes('4-5') || f.includes('6+') || f.includes('High')
-  ).length;
-
-  // Build insights based on patterns
   const insights: string[] = [];
   const recommendations: string[] = [];
 
-  // Sleep insights
-  if (lowSleep > goodSleep) {
-    insights.push(`You've had insufficient sleep (${lowSleep} out of ${recent.length} days). Aim for 7-9 hours for optimal productivity.`);
-    recommendations.push('Try going to bed 30 minutes earlier each night. Create a bedtime routine: dim lights, avoid screens, and read a book.');
-    recommendations.push('Set a consistent sleep schedule: aim for 7-9 hours of sleep and wake up at the same time every day, even on weekends.');
-  } else if (goodSleep > 0) {
-    insights.push(`Great job maintaining good sleep habits! You've had ${goodSleep} days with 7-9 hours of sleep.`);
+  // Analyze patterns
+  if (answers.energy === 'Very low' || answers.energy === 'Low') {
+    insights.push('Your energy levels have been consistently low');
+    recommendations.push('Try getting 7-8 hours of sleep and eating balanced meals');
   }
 
-  // Exercise insights
-  if (noExercise > hasExercise) {
-    insights.push(`You've skipped exercise ${noExercise} out of ${recent.length} days. Regular movement boosts energy and focus.`);
-    recommendations.push('Start with 10-minute walks daily. Try a morning walk to boost energy: walk for 10-15 minutes right after waking up.');
-    recommendations.push('Schedule exercise like a meeting: block 30 minutes in your calendar for physical activity, even if it\'s just a brisk walk.');
-  } else if (hasExercise > 0) {
-    insights.push(`Excellent! You've exercised ${hasExercise} out of ${recent.length} days. Keep it up!`);
+  if (answers.exercise === 'No movement') {
+    insights.push('You haven\'t been getting much physical activity');
+    recommendations.push('Start with a 10-minute walk each day and gradually increase');
   }
 
-  // Meal insights
-  if (lowMeals > goodMeals) {
-    insights.push(`You've been eating ${lowMeals} out of ${recent.length} days with only 1-2 meals. Regular meals fuel your brain.`);
-    recommendations.push('Plan brain-boosting meals: Include protein (eggs, fish), complex carbs (oats, quinoa), and healthy fats (avocado, nuts) in each meal.');
-    recommendations.push('Prep healthy snacks: Keep nuts, fruits, and yogurt handy for when you miss meals. Try meal prepping on Sundays for the week.');
-  } else if (goodMeals > 0) {
-    insights.push(`Good nutrition habits! You've had regular meals (3+) on ${goodMeals} out of ${recent.length} days.`);
+  if (answers.meals === 'Mostly processed/fast food') {
+    insights.push('Your nutrition could use improvement');
+    recommendations.push('Prepare simple, healthy meals like oatmeal for breakfast and salads for lunch');
   }
 
-  // Focus insights
-  if (lowFocus > goodFocus) {
-    insights.push(`You've struggled with focus ${lowFocus} out of ${recent.length} days. Small changes can make a big difference.`);
-    recommendations.push('Use the Pomodoro Technique: Work for 25 minutes, then take a 5-minute break. Repeat 4 times, then take a longer break.');
-    recommendations.push('Minimize distractions: Turn off notifications, use website blockers, and create a dedicated workspace free from interruptions.');
-  } else if (goodFocus > 0) {
-    insights.push(`Strong focus! You've been mostly or completely focused ${goodFocus} out of ${recent.length} days.`);
-  }
-
-  // Default insights if no patterns detected
   if (insights.length === 0) {
-    insights.push(`You've completed ${count} check-in${count !== 1 ? 's' : ''} so far. Consistency is key!`);
-    insights.push('Your energy levels seem to vary throughout the week. Consider tracking patterns.');
-    insights.push('Regular check-ins help build awareness of your daily habits and productivity.');
-  }
-
-  // Default recommendations if none added
-  if (recommendations.length === 0) {
-    recommendations.push('Try to check in at the same time each day to build a routine.');
-    recommendations.push('Review your insights weekly to identify patterns and areas for improvement.');
-    recommendations.push('Set small, achievable goals based on your check-in data.');
+    insights.push('Keep up the good work with your daily check-ins!');
+    recommendations.push('Continue tracking your habits to maintain awareness');
   }
 
   return {
-    insights: insights.slice(0, 3), // Limit to 3 insights
-    summary: `Based on your ${count} check-in${count !== 1 ? 's' : ''}, ${insights.length > 0 ? insights[0].toLowerCase() : 'you\'re building a solid foundation for tracking your productivity and lifestyle habits.'} Keep up the consistency!`,
-    recommendations: recommendations.slice(0, 4), // Limit to 4 recommendations
+    insights,
+    summary: `Based on ${checkIns.length} check-in${checkIns.length !== 1 ? 's' : ''}, here are some patterns we've noticed.`,
+    recommendations,
   };
 }
 
+/**
+ * Handle chatbot queries using Gemini AI
+ */
+export async function handleChatbotQuery(
+  query: string,
+  checkInHistory: CheckInData[]
+): Promise<string> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
+  if (!apiKey) {
+    return "I'm here to help! To enable AI chat, please set VITE_GEMINI_API_KEY in your environment variables.";
+  }
+
+  const historyContext = checkInHistory.slice(-3).map(checkIn => {
+    const date = new Date(checkIn.timestamp).toLocaleDateString();
+    return `${date}: ${JSON.stringify(checkIn.answers)}`;
+  }).join('\n');
+
+  const prompt = `You are a helpful health and productivity coach assistant. Answer the user's question based on their check-in history.
+
+USER CHECK-IN HISTORY:
+${historyContext}
+
+USER QUESTION: ${query}
+
+Provide a helpful, concise response (2-3 sentences max). Be supportive and actionable.`;
+
+  try {
+    const content = await callGeminiAPI(prompt);
+    return content.trim();
+  } catch (error) {
+    console.error('Chatbot query failed:', error);
+    return "I'm having trouble connecting right now. Please try again in a moment.";
+  }
+}
