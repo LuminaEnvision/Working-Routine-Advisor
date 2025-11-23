@@ -76,6 +76,65 @@
 
 <body>
   <div id="root"></div>
+  <!-- CRITICAL: Call ready() immediately when Base Build SDK is available -->
+  <script>
+    // This script runs BEFORE React loads, checking for Base Build SDK
+    (function() {
+      console.log('🔍 Checking for Base Build Farcaster SDK...');
+      
+      // Function to call ready() when SDK is available
+      function callReady() {
+        if (typeof window !== 'undefined' && window.farcaster?.sdk) {
+          const sdk = window.farcaster.sdk;
+          console.log('✅ Base Build SDK found, calling ready()...');
+          console.log('SDK keys:', Object.keys(sdk || {}));
+          
+          try {
+            // Try sdk.actions.ready() first
+            if (sdk.actions?.ready && typeof sdk.actions.ready === 'function') {
+              sdk.actions.ready().then(() => {
+                console.log('✅ ready() called successfully via sdk.actions.ready()');
+              }).catch((err) => {
+                console.error('❌ ready() failed:', err);
+              });
+              return;
+            }
+            
+            // Try sdk.ready()
+            if (sdk.ready && typeof sdk.ready === 'function') {
+              sdk.ready().then(() => {
+                console.log('✅ ready() called successfully via sdk.ready()');
+              }).catch((err) => {
+                console.error('❌ ready() failed:', err);
+              });
+              return;
+            }
+            
+            console.warn('⚠️ SDK found but ready() method not found');
+          } catch (error) {
+            console.error('❌ Error calling ready():', error);
+          }
+        }
+      }
+      
+      // Try immediately
+      callReady();
+      
+      // Also poll for SDK (in case it loads after this script)
+      let attempts = 0;
+      const maxAttempts = 50; // 5 seconds max
+      const pollInterval = setInterval(() => {
+        attempts++;
+        if (window.farcaster?.sdk) {
+          callReady();
+          clearInterval(pollInterval);
+        } else if (attempts >= maxAttempts) {
+          console.warn('⚠️ Base Build SDK not found after polling');
+          clearInterval(pollInterval);
+        }
+      }, 100);
+    })();
+  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

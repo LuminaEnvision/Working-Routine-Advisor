@@ -18,56 +18,67 @@ if (!rootElement) {
 }
 
 // Initialize Farcaster SDK and render app
-// Base Build pattern: Check for SDK on window.farcaster.sdk first
+// Base Build pattern: SDK is injected by Base, we need to call ready() when app is ready
 (async () => {
-  // CRITICAL: Call ready() as early as possible for Base Build
-  // Base Build injects SDK on window.farcaster.sdk, so we can call ready() immediately
-  if (typeof window !== 'undefined' && window.farcaster?.sdk) {
-    const sdk = window.farcaster.sdk;
-    console.log('Base Build detected - calling ready() immediately');
-    
-    // Try to call ready() immediately (Base Build pattern)
-    try {
-      if (sdk.actions?.ready && typeof sdk.actions.ready === 'function') {
-        sdk.actions.ready().then(() => {
-          console.log('✅ Farcaster ready() called via sdk.actions.ready() (Base Build)');
-        }).catch((err: any) => {
-          console.warn('ready() call failed:', err);
-        });
-      } else if (sdk.ready && typeof sdk.ready === 'function') {
-        sdk.ready().then(() => {
-          console.log('✅ Farcaster ready() called via sdk.ready() (Base Build)');
-        }).catch((err: any) => {
-          console.warn('ready() call failed:', err);
-        });
-      }
-    } catch (error) {
-      console.warn('Failed to call ready() immediately:', error);
-    }
-  }
-
-  try {
-    // Initialize Farcaster SDK (for other environments)
-    const sdkResult = await initializeFarcasterSDK();
-    console.log("Farcaster SDK initialized", sdkResult ? "(SDK loaded)" : "(standalone mode)");
-    
-    // Also try signalAppReady as backup
-    if (sdkResult && typeof window !== 'undefined') {
-      const { signalAppReady } = await import('./lib/farcaster-miniapp');
-      signalAppReady().then((success) => {
-        if (success) {
-          console.log("✅ Farcaster ready() called via signalAppReady (backup)");
-        }
-      });
-    }
-  } catch (error) {
-    console.warn("Farcaster SDK initialization failed (running in standalone mode):", error);
-  }
-
-  // Render React app
+  // Render React app first
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
       <App />
     </React.StrictMode>
   );
+
+  // After React renders, try to call ready()
+  // Use a small delay to ensure DOM is ready
+  setTimeout(() => {
+    const callReady = async () => {
+      // Method 1: Check window.farcaster.sdk (Base Build pattern)
+      if (typeof window !== 'undefined' && window.farcaster?.sdk) {
+        const sdk = window.farcaster.sdk;
+        console.log('🔍 Base Build SDK detected, attempting ready() call...');
+        console.log('SDK structure:', Object.keys(sdk || {}));
+        
+        try {
+          // Try sdk.actions.ready() first (most common)
+          if (sdk.actions?.ready && typeof sdk.actions.ready === 'function') {
+            await sdk.actions.ready();
+            console.log('✅ ready() called via sdk.actions.ready()');
+            return;
+          }
+          
+          // Try sdk.ready()
+          if (sdk.ready && typeof sdk.ready === 'function') {
+            await sdk.ready();
+            console.log('✅ ready() called via sdk.ready()');
+            return;
+          }
+          
+          // Try direct ready property
+          if (typeof (sdk as any).ready === 'function') {
+            await (sdk as any).ready();
+            console.log('✅ ready() called via direct ready()');
+            return;
+          }
+          
+          console.warn('⚠️ SDK found but ready() method not found. SDK keys:', Object.keys(sdk));
+        } catch (error) {
+          console.error('❌ Error calling ready():', error);
+        }
+      }
+
+      // Method 2: Try importing SDK and calling ready()
+      try {
+        const { signalAppReady } = await import('./lib/farcaster-miniapp');
+        const success = await signalAppReady();
+        if (success) {
+          console.log('✅ ready() called via signalAppReady()');
+        } else {
+          console.warn('⚠️ signalAppReady() returned false');
+        }
+      } catch (error) {
+        console.error('❌ signalAppReady() failed:', error);
+      }
+    };
+
+    callReady();
+  }, 100);
 })();

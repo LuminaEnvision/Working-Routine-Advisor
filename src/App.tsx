@@ -34,35 +34,53 @@ const App = () => {
   // Signal to Farcaster that the app is ready to display
   // This must be called AFTER the app is fully loaded and mounted
   useEffect(() => {
-    // Call ready() as soon as possible, but after React has rendered
-    // Use requestAnimationFrame to ensure DOM is ready
-    const callReady = () => {
-      signalAppReady().then((success) => {
-        if (success) {
-          console.log("✅ Farcaster Mini App is ready and splash screen dismissed");
-        } else {
-          console.warn("⚠️ Failed to signal Farcaster app ready - will retry...");
-          // Retry after a short delay if first attempt failed
-          setTimeout(() => {
-            signalAppReady().then((retrySuccess) => {
-              if (retrySuccess) {
-                console.log("✅ Farcaster Mini App ready on retry");
-              } else {
-                console.error("❌ Failed to signal Farcaster app ready after retry");
-              }
-            });
-          }, 500);
+    // Multiple attempts to call ready() - Base Build needs this
+    const attemptReady = async (attempt: number) => {
+      console.log(`🔄 Attempting ready() call (attempt ${attempt})...`);
+      
+      // First, try window.farcaster.sdk directly (Base Build)
+      if (typeof window !== 'undefined' && window.farcaster?.sdk) {
+        const sdk = window.farcaster.sdk;
+        try {
+          if (sdk.actions?.ready) {
+            await sdk.actions.ready();
+            console.log(`✅ ready() succeeded on attempt ${attempt} via sdk.actions.ready()`);
+            return true;
+          }
+          if (sdk.ready) {
+            await sdk.ready();
+            console.log(`✅ ready() succeeded on attempt ${attempt} via sdk.ready()`);
+            return true;
+          }
+        } catch (error) {
+          console.error(`❌ ready() failed on attempt ${attempt}:`, error);
         }
-      });
+      }
+
+      // Fallback: use signalAppReady
+      const success = await signalAppReady();
+      if (success) {
+        console.log(`✅ ready() succeeded on attempt ${attempt} via signalAppReady()`);
+        return true;
+      }
+      
+      return false;
     };
 
-    // Try immediately (React should be ready)
-    callReady();
-    
-    // Also try after a small delay as backup
-    const timer = setTimeout(callReady, 50);
+    // Try immediately
+    attemptReady(1).then((success) => {
+      if (!success) {
+        // Retry after 200ms
+        setTimeout(() => attemptReady(2), 200);
+      }
+    });
 
-    return () => clearTimeout(timer);
+    // Also try after 500ms as final backup
+    const finalTimer = setTimeout(() => {
+      attemptReady(3);
+    }, 500);
+
+    return () => clearTimeout(finalTimer);
   }, []);
 
   return (
