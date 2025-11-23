@@ -158,28 +158,56 @@ export const signalAppReady = async (): Promise<boolean> => {
   }
 
   try {
-    // First, try to get SDK from window.farcaster directly (most reliable)
+    // CRITICAL: Base Build pattern - use window.farcaster.sdk.actions.ready()
+    // This matches the working DeCleanup app pattern
     if (window.farcaster?.sdk) {
       const sdk = window.farcaster.sdk;
       console.log('Found Farcaster SDK on window.farcaster.sdk');
+      console.log('SDK structure:', {
+        hasActions: !!sdk.actions,
+        hasReady: !!sdk.ready,
+        actionsKeys: sdk.actions ? Object.keys(sdk.actions) : [],
+        sdkKeys: Object.keys(sdk || {}),
+      });
       
-      // Try multiple ways to call ready()
+      // Method 1: sdk.actions.ready() - This is the correct method for Base Build
       if (sdk.actions?.ready && typeof sdk.actions.ready === 'function') {
-        await sdk.actions.ready();
-        sdkInitialized = true;
-        console.log('✅ Farcaster Mini App signaled as ready via sdk.actions.ready()');
-        return true;
-      } else if (sdk.ready && typeof sdk.ready === 'function') {
-        await sdk.ready();
-        sdkInitialized = true;
-        console.log('✅ Farcaster Mini App signaled as ready via sdk.ready()');
-        return true;
-      } else if (typeof sdk === 'object' && 'ready' in sdk && typeof (sdk as any).ready === 'function') {
-        await (sdk as any).ready();
-        sdkInitialized = true;
-        console.log('✅ Farcaster Mini App signaled as ready via direct ready()');
-        return true;
+        try {
+          await sdk.actions.ready();
+          sdkInitialized = true;
+          console.log('✅ Farcaster Mini App signaled as ready via sdk.actions.ready()');
+          return true;
+        } catch (error) {
+          console.error('❌ sdk.actions.ready() failed:', error);
+          // Continue to try other methods
+        }
       }
+      
+      // Method 2: sdk.ready() - Fallback
+      if (sdk.ready && typeof sdk.ready === 'function') {
+        try {
+          await sdk.ready();
+          sdkInitialized = true;
+          console.log('✅ Farcaster Mini App signaled as ready via sdk.ready()');
+          return true;
+        } catch (error) {
+          console.error('❌ sdk.ready() failed:', error);
+        }
+      }
+      
+      // Method 3: Direct ready property
+      if (typeof (sdk as any).ready === 'function') {
+        try {
+          await (sdk as any).ready();
+          sdkInitialized = true;
+          console.log('✅ Farcaster Mini App signaled as ready via direct ready()');
+          return true;
+        } catch (error) {
+          console.error('❌ direct ready() failed:', error);
+        }
+      }
+      
+      console.warn('⚠️ SDK found but no ready() method available');
     }
 
     // Try importing SDK

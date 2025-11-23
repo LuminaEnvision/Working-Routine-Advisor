@@ -76,63 +76,95 @@
 
 <body>
   <div id="root"></div>
-  <!-- CRITICAL: Call ready() immediately when Base Build SDK is available -->
+  <!-- CRITICAL: Call ready() when Base Build SDK is available -->
+  <!-- This matches the pattern used by working Next.js apps like DeCleanup -->
   <script>
-    // This script runs BEFORE React loads, checking for Base Build SDK
     (function() {
-      console.log('🔍 Checking for Base Build Farcaster SDK...');
+      console.log('🔍 Initializing Farcaster ready() handler...');
       
-      // Function to call ready() when SDK is available
+      let readyCalled = false;
+      
+      // Function to call ready() - matches DeCleanup pattern
       function callReady() {
-        if (typeof window !== 'undefined' && window.farcaster?.sdk) {
-          const sdk = window.farcaster.sdk;
-          console.log('✅ Base Build SDK found, calling ready()...');
-          console.log('SDK keys:', Object.keys(sdk || {}));
-          
+        if (readyCalled) {
+          console.log('ready() already called, skipping');
+          return;
+        }
+        
+        if (typeof window === 'undefined') return;
+        
+        // Method 1: window.farcaster.sdk.actions.ready() (Base Build pattern)
+        if (window.farcaster?.sdk?.actions?.ready) {
           try {
-            // Try sdk.actions.ready() first
-            if (sdk.actions?.ready && typeof sdk.actions.ready === 'function') {
-              sdk.actions.ready().then(() => {
-                console.log('✅ ready() called successfully via sdk.actions.ready()');
-              }).catch((err) => {
-                console.error('❌ ready() failed:', err);
-              });
-              return;
-            }
-            
-            // Try sdk.ready()
-            if (sdk.ready && typeof sdk.ready === 'function') {
-              sdk.ready().then(() => {
-                console.log('✅ ready() called successfully via sdk.ready()');
-              }).catch((err) => {
-                console.error('❌ ready() failed:', err);
-              });
-              return;
-            }
-            
-            console.warn('⚠️ SDK found but ready() method not found');
+            window.farcaster.sdk.actions.ready().then(() => {
+              readyCalled = true;
+              console.log('✅ ready() called via window.farcaster.sdk.actions.ready()');
+            }).catch((err) => {
+              console.error('❌ ready() failed:', err);
+            });
+            return;
           } catch (error) {
-            console.error('❌ Error calling ready():', error);
+            console.error('❌ Error calling sdk.actions.ready():', error);
+          }
+        }
+        
+        // Method 2: window.farcaster.sdk.ready()
+        if (window.farcaster?.sdk?.ready) {
+          try {
+            window.farcaster.sdk.ready().then(() => {
+              readyCalled = true;
+              console.log('✅ ready() called via window.farcaster.sdk.ready()');
+            }).catch((err) => {
+              console.error('❌ ready() failed:', err);
+            });
+            return;
+          } catch (error) {
+            console.error('❌ Error calling sdk.ready():', error);
           }
         }
       }
       
-      // Try immediately
-      callReady();
+      // Wait for DOM to be ready, then start polling
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+          console.log('DOM loaded, starting SDK detection...');
+          startPolling();
+        });
+      } else {
+        // DOM already loaded
+        startPolling();
+      }
       
-      // Also poll for SDK (in case it loads after this script)
-      let attempts = 0;
-      const maxAttempts = 50; // 5 seconds max
-      const pollInterval = setInterval(() => {
-        attempts++;
-        if (window.farcaster?.sdk) {
-          callReady();
-          clearInterval(pollInterval);
-        } else if (attempts >= maxAttempts) {
-          console.warn('⚠️ Base Build SDK not found after polling');
-          clearInterval(pollInterval);
-        }
-      }, 100);
+      function startPolling() {
+        // Try immediately
+        callReady();
+        
+        // Poll for SDK (Base Build injects it asynchronously)
+        let attempts = 0;
+        const maxAttempts = 100; // 10 seconds
+        const pollInterval = setInterval(function() {
+          attempts++;
+          
+          if (window.farcaster?.sdk) {
+            console.log('✅ SDK detected on attempt', attempts);
+            callReady();
+            if (readyCalled) {
+              clearInterval(pollInterval);
+            }
+          } else if (attempts >= maxAttempts) {
+            console.warn('⚠️ SDK not found after', maxAttempts, 'attempts');
+            clearInterval(pollInterval);
+          }
+        }, 100);
+      }
+      
+      // Also listen for potential SDK injection events
+      if (window.addEventListener) {
+        window.addEventListener('load', function() {
+          console.log('Window loaded, checking for SDK...');
+          setTimeout(callReady, 100);
+        });
+      }
     })();
   </script>
   <script type="module" src="/src/main.tsx"></script>
