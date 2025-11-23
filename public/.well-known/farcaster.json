@@ -1,17 +1,37 @@
 {
     "accountAssociation": {
-        "header": "REPLACE_WITH_SIGNED_HEADER",
-        "payload": "REPLACE_WITH_SIGNED_PAYLOAD",
-        "signature": "REPLACE_WITH_SIGNED_SIGNATURE"
+        "header": "eyJmaWQiOjM3OTUzMywidHlwZSI6ImF1dGgiLCJrZXkiOiIweDE4QmFGMDREOUU3Y2RlNDE0NDAwMDgzYkYxZTY5RjI1ZjJjNTI0OTMifQ",
+        "payload": "eyJkb21haW4iOiJ3b3JraW5nLXJvdXRpbmUtYWR2aXNvci52ZXJjZWwuYXBwIn0",
+        "signature": "pB6k4ScrlvBsSKqWFqnSv/FDWxFQpRR1fe2UUg42uy9XVoU1Wgd4YP0pv4ubmcvy2T3Bd1tzB+eotLLpAZ52Bhw="
     },
-    "frame": {
+    "baseBuilder": {
+        "ownerAddress": "0x54e2bC746Cf63469A0ca1e3c6647BB3cfCE48978"
+    },
+    "miniapp": {
         "version": "1",
         "name": "Working Routine Advisor",
         "iconUrl": "https://gateway.pinata.cloud/ipfs/bafybeihklipunixc2233umdxmrm5hryq7lrqx2zga7zng54iwze2to6fya?filename=iconWRA.png",
         "homeUrl": "https://working-routine-advisor.vercel.app",
-        "imageUrl": "https://gateway.pinata.cloud/ipfs/bafybeiansw55tjsxnng3i7njc2mttba4ccw64a3uwjwlvfhva2uud54ai4?filename=ogImageWRA.png",
-        "buttonTitle": "Open App",
         "splashImageUrl": "https://gateway.pinata.cloud/ipfs/bafybeiansw55tjsxnng3i7njc2mttba4ccw64a3uwjwlvfhva2uud54ai4?filename=splashWRA.png",
-        "splashBackgroundColor": "#0F172A"
+        "splashBackgroundColor": "#0F172A",
+        "primaryCategory": "health-fitness",
+        "tags": [
+            "wellness",
+            "productivity",
+            "health",
+            "routine",
+            "ai"
+        ],
+        "subtitle": "AI-powered work routine optimizer",
+        "description": "Get personalized AI recommendations to optimize your daily work routine, improve productivity, and maintain a healthy work-life balance with blockchain-verified achievements.",
+        "screenshotUrls": [
+            "https://gateway.pinata.cloud/ipfs/bafybeiansw55tjsxnng3i7njc2mttba4ccw64a3uwjwlvfhva2uud54ai4?filename=splashWRA.png"
+        ],
+        "heroImageUrl": "https://gateway.pinata.cloud/ipfs/bafybeiansw55tjsxnng3i7njc2mttba4ccw64a3uwjwlvfhva2uud54ai4?filename=ogImageWRA.png",
+        "tagline": "Optimize your work routine with AI",
+        "ogTitle": "Working Routine Advisor",
+        "ogDescription": "AI-powered recommendations for healthier, more productive work routines on Base blockchain",
+        "ogImageUrl": "https://gateway.pinata.cloud/ipfs/bafybeiansw55tjsxnng3i7njc2mttba4ccw64a3uwjwlvfhva2uud54ai4?filename=ogImageWRA.png",
+        "noindex": false
     }
 }
