@@ -2,9 +2,9 @@ export const contractAddresses = {
   "network": "celo",
   "deployedAt": "2025-11-11T02:53:54.568Z",
   "deployer": "0x520E40E346ea85D72661fcE3Ba3F81CB2c560d84",
-  "insightToken": "0x8a24b8C6f3e35d45f7639BbcB2B802ac0c4Cd74F",
-  "insightsPayment": "0x8BF96665c1fa2D9368EB5CcdCd25C3C92DE20c1F",
-  "cUSD": "0x765DE816845861e75A25fCA122bb6898B8B1282a",
+  "insightToken": import.meta.env.VITE_INSIGHT_TOKEN_ADDRESS || "0x8a24b8C6f3e35d45f7639BbcB2B802ac0c4Cd74F",
+  "insightsPayment": import.meta.env.VITE_INSIGHTS_PAYMENT_ADDRESS || "0x8BF96665c1fa2D9368EB5CcdCd25C3C92DE20c1F",
+  "cUSD": import.meta.env.VITE_CUSD_TOKEN_ADDRESS || "0x765DE816845861e75A25fCA122bb6898B8B1282a",
   "migration": {
     "from": {
       "insightToken": "0x9a1BD5E334140219e20995Be32050354D21F5981",
