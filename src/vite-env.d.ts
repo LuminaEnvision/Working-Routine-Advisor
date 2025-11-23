@@ -8,6 +8,9 @@ interface Window {
     isMetaMask?: boolean;
   };
   farcaster?: {
+    sdk?: any;
+    wallet?: any;
+    ready?: () => Promise<void> | void;
     sdk?: {
       actions?: {
         ready?: () => Promise<void>;

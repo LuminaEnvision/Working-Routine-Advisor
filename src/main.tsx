@@ -18,17 +18,53 @@ if (!rootElement) {
 }
 
 // Initialize Farcaster SDK and render app
-// This ensures sdk.actions.ready() is called before React renders
+// Base Build pattern: Check for SDK on window.farcaster.sdk first
 (async () => {
+  // CRITICAL: Call ready() as early as possible for Base Build
+  // Base Build injects SDK on window.farcaster.sdk, so we can call ready() immediately
+  if (typeof window !== 'undefined' && window.farcaster?.sdk) {
+    const sdk = window.farcaster.sdk;
+    console.log('Base Build detected - calling ready() immediately');
+    
+    // Try to call ready() immediately (Base Build pattern)
+    try {
+      if (sdk.actions?.ready && typeof sdk.actions.ready === 'function') {
+        sdk.actions.ready().then(() => {
+          console.log('✅ Farcaster ready() called via sdk.actions.ready() (Base Build)');
+        }).catch((err: any) => {
+          console.warn('ready() call failed:', err);
+        });
+      } else if (sdk.ready && typeof sdk.ready === 'function') {
+        sdk.ready().then(() => {
+          console.log('✅ Farcaster ready() called via sdk.ready() (Base Build)');
+        }).catch((err: any) => {
+          console.warn('ready() call failed:', err);
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to call ready() immediately:', error);
+    }
+  }
+
   try {
-    // Initialize Farcaster SDK first (required for Mini Apps)
-    await initializeFarcasterSDK();
-    console.log("Farcaster SDK initialized successfully");
+    // Initialize Farcaster SDK (for other environments)
+    const sdkResult = await initializeFarcasterSDK();
+    console.log("Farcaster SDK initialized", sdkResult ? "(SDK loaded)" : "(standalone mode)");
+    
+    // Also try signalAppReady as backup
+    if (sdkResult && typeof window !== 'undefined') {
+      const { signalAppReady } = await import('./lib/farcaster-miniapp');
+      signalAppReady().then((success) => {
+        if (success) {
+          console.log("✅ Farcaster ready() called via signalAppReady (backup)");
+        }
+      });
+    }
   } catch (error) {
     console.warn("Farcaster SDK initialization failed (running in standalone mode):", error);
   }
-  
-  // Render React app after SDK is ready
+
+  // Render React app
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
       <App />

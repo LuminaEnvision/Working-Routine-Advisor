@@ -4,20 +4,34 @@ let sdkInitialized = false;
 
 const getFarcasterSDK = async () => {
   if (farcasterSDK !== null) return farcasterSDK;
-  
+
   try {
+    // First check if SDK is already available on window (Base Build pattern)
+    if (typeof window !== 'undefined' && window.farcaster?.sdk) {
+      console.log('Using Farcaster SDK from window.farcaster.sdk (Base Build pattern)');
+      farcasterSDK = window.farcaster.sdk;
+      return farcasterSDK;
+    }
+
+    // Try importing SDK module (fallback for other environments)
     const sdkModule = await import('@farcaster/miniapp-sdk');
     // The SDK is typically exported as a default export or named export
     farcasterSDK = sdkModule.sdk || sdkModule.default || sdkModule;
-    
+
     // If SDK has an init method, call it
     if (farcasterSDK && typeof farcasterSDK.init === 'function') {
       await farcasterSDK.init();
     }
-    
+
     return farcasterSDK;
   } catch (error) {
     console.warn('Farcaster SDK not available:', error);
+    // If import fails but window.farcaster exists, use that
+    if (typeof window !== 'undefined' && window.farcaster?.sdk) {
+      console.log('Falling back to window.farcaster.sdk');
+      farcasterSDK = window.farcaster.sdk;
+      return farcasterSDK;
+    }
     return null;
   }
 };
@@ -28,7 +42,7 @@ const getFarcasterSDK = async () => {
  */
 export const isFarcasterMiniApp = (): boolean => {
   if (typeof window === 'undefined') return false;
-  
+
   // Method 1: Check for Farcaster SDK (most reliable)
   try {
     if (window.farcaster?.sdk) {
@@ -37,19 +51,19 @@ export const isFarcasterMiniApp = (): boolean => {
   } catch (e) {
     // SDK not available
   }
-  
+
   // Method 2: Check user agent (more specific)
   const ua = navigator.userAgent.toLowerCase();
   if (ua.includes('warpcast') || (ua.includes('farcaster') && ua.includes('miniapp'))) {
     return true;
   }
-  
+
   // Method 3: Check for Farcaster-specific query params
   const params = new URLSearchParams(window.location.search);
   if (params.get('farcaster') === 'true' || params.get('miniapp') === 'true') {
     return true;
   }
-  
+
   // Method 4: Check parent window (if embedded in iframe)
   // Only return true if we can actually verify the parent is Farcaster
   try {
@@ -71,14 +85,14 @@ export const isFarcasterMiniApp = (): boolean => {
       // No Farcaster indicators
     }
   }
-  
+
   return false;
 };
 
 /**
  * Initialize Farcaster Mini App SDK
  * Call this early in your app lifecycle (e.g., in main.tsx or App.tsx)
- * This is required for Farcaster Mini Apps to signal they're ready
+ * NOTE: This does NOT call ready() - you must call signalAppReady() after your app is fully loaded
  */
 export const initializeFarcasterSDK = async (): Promise<{
   sdk: any;
@@ -86,16 +100,16 @@ export const initializeFarcasterSDK = async (): Promise<{
   isReady: boolean;
 } | null> => {
   if (typeof window === 'undefined') return null;
-  
+
   // Prevent multiple initializations
-  if (sdkInitialized) {
+  if (farcasterSDK !== null) {
     return {
       sdk: farcasterSDK,
       context: null,
-      isReady: true,
+      isReady: sdkInitialized,
     };
   }
-  
+
   try {
     const sdk = await getFarcasterSDK();
     if (!sdk) {
@@ -105,31 +119,19 @@ export const initializeFarcasterSDK = async (): Promise<{
       }
       return null;
     }
-    
-    // Call ready() to signal the Mini App is loaded
-    // This is required by Farcaster Mini App specification
-    if (sdk.actions && typeof sdk.actions.ready === 'function') {
-      await sdk.actions.ready();
-      sdkInitialized = true;
-    } else if (sdk.ready && typeof sdk.ready === 'function') {
-      await sdk.ready();
-      sdkInitialized = true;
-    } else {
-      console.warn('Farcaster SDK ready() method not found');
-    }
-    
+
     // Get context (user info, environment, etc.)
     let context = null;
     try {
       if (sdk.context) {
-        context = typeof sdk.context === 'function' 
-          ? await sdk.context() 
+        context = typeof sdk.context === 'function'
+          ? await sdk.context()
           : await sdk.context;
       }
     } catch (ctxError) {
       console.warn('Could not get Farcaster context:', ctxError);
     }
-    
+
     return {
       sdk,
       context,
@@ -138,6 +140,103 @@ export const initializeFarcasterSDK = async (): Promise<{
   } catch (error) {
     console.warn('Farcaster SDK not available (running in standalone mode):', error);
     return null;
+  }
+};
+
+/**
+ * Signal that the app is ready to display
+ * Call this AFTER your app is fully loaded and ready to show content
+ * This hides the splash screen in Farcaster Mini Apps
+ */
+export const signalAppReady = async (): Promise<boolean> => {
+  if (typeof window === 'undefined') return false;
+
+  // Don't call ready() multiple times
+  if (sdkInitialized) {
+    console.log('Farcaster SDK already signaled as ready');
+    return true;
+  }
+
+  try {
+    // First, try to get SDK from window.farcaster directly (most reliable)
+    if (window.farcaster?.sdk) {
+      const sdk = window.farcaster.sdk;
+      console.log('Found Farcaster SDK on window.farcaster.sdk');
+      
+      // Try multiple ways to call ready()
+      if (sdk.actions?.ready && typeof sdk.actions.ready === 'function') {
+        await sdk.actions.ready();
+        sdkInitialized = true;
+        console.log('✅ Farcaster Mini App signaled as ready via sdk.actions.ready()');
+        return true;
+      } else if (sdk.ready && typeof sdk.ready === 'function') {
+        await sdk.ready();
+        sdkInitialized = true;
+        console.log('✅ Farcaster Mini App signaled as ready via sdk.ready()');
+        return true;
+      } else if (typeof sdk === 'object' && 'ready' in sdk && typeof (sdk as any).ready === 'function') {
+        await (sdk as any).ready();
+        sdkInitialized = true;
+        console.log('✅ Farcaster Mini App signaled as ready via direct ready()');
+        return true;
+      }
+    }
+
+    // Try importing SDK
+    const sdk = await getFarcasterSDK();
+    if (!sdk) {
+      // Check if we're in Farcaster context but SDK import failed
+      if (window.farcaster?.wallet || window.farcaster?.sdk) {
+        console.warn('⚠️ Farcaster context detected but SDK import failed. Trying window.farcaster directly...');
+        // Try calling ready on window.farcaster directly
+        if (window.farcaster.ready && typeof window.farcaster.ready === 'function') {
+          await window.farcaster.ready();
+          sdkInitialized = true;
+          console.log('✅ Farcaster Mini App signaled as ready via window.farcaster.ready()');
+          return true;
+        }
+      }
+      console.log('Farcaster SDK not available (running in standalone mode)');
+      return false;
+    }
+
+    // Call ready() to signal the Mini App is loaded
+    // This is required by Farcaster Mini App specification
+    if (sdk.actions && typeof sdk.actions.ready === 'function') {
+      await sdk.actions.ready();
+      sdkInitialized = true;
+      console.log('✅ Farcaster Mini App signaled as ready via sdk.actions.ready()');
+      return true;
+    } else if (sdk.ready && typeof sdk.ready === 'function') {
+      await sdk.ready();
+      sdkInitialized = true;
+      console.log('✅ Farcaster Mini App signaled as ready via sdk.ready()');
+      return true;
+    } else {
+      console.warn('⚠️ Farcaster SDK ready() method not found. SDK structure:', Object.keys(sdk || {}));
+      // Last resort: try calling ready() directly if it exists
+      if (typeof (sdk as any).ready === 'function') {
+        await (sdk as any).ready();
+        sdkInitialized = true;
+        console.log('✅ Farcaster Mini App signaled as ready via direct ready() call');
+        return true;
+      }
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Failed to signal Farcaster app ready:', error);
+    // Try one more time with window.farcaster directly
+    try {
+      if (window.farcaster?.ready && typeof window.farcaster.ready === 'function') {
+        await window.farcaster.ready();
+        sdkInitialized = true;
+        console.log('✅ Farcaster Mini App signaled as ready via window.farcaster.ready() (fallback)');
+        return true;
+      }
+    } catch (fallbackError) {
+      console.error('❌ Fallback ready() call also failed:', fallbackError);
+    }
+    return false;
   }
 };
 
@@ -164,7 +263,7 @@ export const getFarcasterWalletProvider = async () => {
         return window.farcaster.wallet;
       }
     }
-    
+
     // Check for SDK wallet
     if (window.farcaster?.sdk?.wallet) {
       const wallet = window.farcaster.sdk.wallet;
@@ -176,12 +275,12 @@ export const getFarcasterWalletProvider = async () => {
       }
     }
   }
-  
+
   // Try to get from SDK
   try {
     const sdk = await getFarcasterSDK();
     if (!sdk) return null;
-    
+
     // Try different methods to get the provider
     if (sdk.wallet?.getEthereumProvider) {
       return sdk.wallet.getEthereumProvider();
@@ -192,7 +291,7 @@ export const getFarcasterWalletProvider = async () => {
     if (sdk.getEthereumProvider) {
       return sdk.getEthereumProvider();
     }
-    
+
     return null;
   } catch (error) {
     console.warn('Farcaster wallet provider not available:', error);
@@ -208,19 +307,19 @@ export const getFarcasterContext = async () => {
   try {
     const sdk = await getFarcasterSDK();
     if (!sdk) return null;
-    
+
     if (sdk.context) {
       // Context might be a promise or a direct value
-      return typeof sdk.context === 'function' 
-        ? await sdk.context() 
+      return typeof sdk.context === 'function'
+        ? await sdk.context()
         : await Promise.resolve(sdk.context);
     }
-    
+
     // Fallback: check window.farcaster for context
     if (typeof window !== 'undefined' && window.farcaster?.context) {
       return window.farcaster.context;
     }
-    
+
     return null;
   } catch (error) {
     console.warn('Farcaster context not available:', error);
@@ -233,7 +332,7 @@ export const getFarcasterContext = async () => {
  */
 export const isFarcasterWalletAvailable = async (): Promise<boolean> => {
   if (!isFarcasterMiniApp()) return false;
-  
+
   try {
     const provider = await getFarcasterWalletProvider();
     return provider !== null;

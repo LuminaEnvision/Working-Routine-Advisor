@@ -589,12 +589,12 @@ const DailyCheckIn = () => {
                 {question?.question}
               </CardTitle>
               {question && (
-                <RadioGroup
+              <RadioGroup
                   value={responses[question.id.toString()]?.selectedOption || ""}
                   onValueChange={handleAnswer}
-                  className="grid grid-cols-1 sm:grid-cols-2 gap-2"
-                >
-                  {question.options.map((opt) => (
+                className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+              >
+                {question.options.map((opt) => (
                     <div
                       key={opt.value}
                       className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50 transition-colors"
@@ -603,9 +603,9 @@ const DailyCheckIn = () => {
                       <Label htmlFor={opt.value} className="text-xs sm:text-sm cursor-pointer flex-1">
                         {opt.text}
                       </Label>
-                    </div>
-                  ))}
-                </RadioGroup>
+                  </div>
+                ))}
+              </RadioGroup>
               )}
               <Progress value={progress} className="h-1.5 mt-2 bg-muted" />
               <p className="text-xs text-muted-foreground">

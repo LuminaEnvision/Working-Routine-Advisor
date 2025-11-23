@@ -591,9 +591,9 @@ const Recommendations = () => {
                         </div>
                       ))}
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+          </CardContent>
+        </Card>
+      ))}
             </div>
           ) : (
             <Card className="border-dashed border-border">

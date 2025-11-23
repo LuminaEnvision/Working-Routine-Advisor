@@ -142,7 +142,7 @@ const Profile = () => {
         if (!cancelled) {
           setInsightBalanceRaw(null);
         }
-      } finally {
+    } finally {
         if (!cancelled) {
           setIsBalanceLoading(false);
         }
