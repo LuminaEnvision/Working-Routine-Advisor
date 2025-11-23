@@ -251,7 +251,7 @@ const Recommendations = () => {
                       {loadingMessages[loadingMessageIndex]}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      This may take a moment while we consult our AI health coach
+                      This may take up to 15 seconds...
                     </p>
                     <div className="flex justify-center gap-1 pt-2">
                       <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
@@ -322,7 +322,7 @@ const Recommendations = () => {
                                 <CardTitle className="text-xs sm:text-sm font-semibold">
                                   {rec.title}
                                 </CardTitle>
-                                <Badge variant="outline" className="text-xs">
+                                <Badge variant="outline">
                                   Priority {rec.priority}
                                 </Badge>
                               </div>
@@ -382,7 +382,7 @@ const Recommendations = () => {
                     <h3 className="text-sm font-semibold">Metrics to Track</h3>
                     <div className="flex flex-wrap gap-2">
                       {latestAnalysis.trackingMetrics.map((metric, index) => (
-                        <Badge key={index} variant="secondary" className="text-xs">
+                        <Badge key={index} variant="secondary">
                           {metric}
                         </Badge>
                       ))}
@@ -591,9 +591,9 @@ const Recommendations = () => {
                         </div>
                       ))}
                     </div>
-          </CardContent>
-        </Card>
-      ))}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           ) : (
             <Card className="border-dashed border-border">
@@ -603,12 +603,20 @@ const Recommendations = () => {
                   Complete your first check-in to start tracking your progress. Once you have check-ins, you'll see personalized recommendations and insights here.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <Link to="/daily-checkin">
                   <Button className="w-full bg-gradient-celo hover:opacity-90" size="lg">
                     Start Daily Check-in
                   </Button>
                 </Link>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs text-muted-foreground"
+                  onClick={() => window.location.reload()}
+                >
+                  Refresh Data
+                </Button>
               </CardContent>
             </Card>
           )}

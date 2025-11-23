@@ -19,7 +19,7 @@ const DailyCheckIn = () => {
   const { checkIns, addCheckIn, getPreviousCheckIn, getHistoricalData } = useCheckIns();
   const { status, isLoading, checkCooldown } = useInsightsPayment(checkIns.length);
   const navigate = useNavigate();
-  
+
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -48,20 +48,20 @@ const DailyCheckIn = () => {
           remainingCheckinsToday: status.remainingCheckinsToday,
           hoursUntilNextCheckin: status.hoursUntilNextCheckin
         });
-        
+
         // If contract check says no, but status says yes, trust status (might be contract not deployed)
         // The contract will enforce the actual rules when submitting
         const canCheckBasedOnStatus = !status.isInCooldown && status.remainingCheckinsToday > 0;
         const finalCanCheck = canCheck || canCheckBasedOnStatus;
-        
+
         console.log('Final check-in decision:', {
           contractCheck: canCheck,
           statusCheck: canCheckBasedOnStatus,
           finalDecision: finalCanCheck
         });
-        
+
         setCanCheckIn(finalCanCheck);
-        
+
         // Only load questions if user can check in
         if (finalCanCheck && questions.length === 0 && !isLoadingQuestions) {
           loadQuestions();
@@ -110,7 +110,7 @@ const DailyCheckIn = () => {
 
   const handleAnswer = (optionValue: string) => {
     if (!question) return;
-    
+
     const selectedOption = question.options.find(opt => opt.value === optionValue);
     if (!selectedOption) return;
 
@@ -153,15 +153,15 @@ const DailyCheckIn = () => {
     setIsAnalyzing(true);
     setAnalysisError(null);
     setShowPaymentGate(false); // Hide payment gate to show analyzing state
-    
+
     try {
       console.log('Starting analysis with responses:', responses);
       const historicalData = getHistoricalData(7);
       console.log('Historical data:', historicalData);
-      
+
       const analysis = await analyzeAndRecommend(responses, historicalData);
       console.log('Analysis completed:', analysis);
-      
+
       const currentTime = new Date();
       const hour = currentTime.getHours();
       const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
@@ -183,12 +183,12 @@ const DailyCheckIn = () => {
       console.log('Saving check-in data:', checkInData);
       addCheckIn(checkInData);
       console.log('Check-in saved successfully');
-      
+
       // Reset state for question flow
       setCurrentQuestion(0);
       setResponses({});
       setQuestions([]);
-      
+
       // Wait for localStorage to save (CheckInContext saves in useEffect)
       // Also wait a bit for the contract state to update
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -199,7 +199,7 @@ const DailyCheckIn = () => {
       toast.success('Check-in completed! Your personalized insights are ready in the Insights tab.');
     } catch (error) {
       console.error('Failed to analyze check-in:', error);
-      
+
       // Try to generate a basic fallback analysis using rule-based insights
       let fallbackAnalysis: AnalysisResponse | undefined;
       try {
@@ -217,10 +217,10 @@ const DailyCheckIn = () => {
           },
           ...getHistoricalData(7),
         ];
-        
+
         // Use rule-based insights as fallback
         const ruleBasedInsights = await generateInsights(checkInsForFallback);
-        
+
         // Convert to AnalysisResponse format
         fallbackAnalysis = {
           assessment: ruleBasedInsights.summary || 'Based on your check-in, continue tracking your daily habits.',
@@ -242,16 +242,25 @@ const DailyCheckIn = () => {
       } catch (fallbackError) {
         console.error('Fallback analysis also failed:', fallbackError);
       }
-      
+
       toast.error('Check-in saved, but AI analysis failed. Using fallback insights.');
       setIsAnalyzing(false);
       setAnalysisComplete(false);
       setAnalysisError('We saved your check-in, but the AI analysis did not complete. Using rule-based insights instead.');
-      
-      // Save the check-in with fallback analysis if available
+
+      // Save the check-in with fallback analysis if available, or emergency fallback
       const currentTime = new Date();
       const hour = currentTime.getHours();
       const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+
+      // Emergency fallback if even the rule-based fallback failed
+      const finalAnalysis = fallbackAnalysis || {
+        assessment: 'Check-in recorded. Please continue tracking to generate insights.',
+        concerns: [],
+        recommendations: [],
+        quickWins: [],
+        trackingMetrics: []
+      };
 
       const checkInData: CheckInData = {
         answers: Object.fromEntries(
@@ -264,9 +273,10 @@ const DailyCheckIn = () => {
         questions,
         responses,
         timeOfDay,
-        ...(fallbackAnalysis && { analysis: fallbackAnalysis }),
+        analysis: finalAnalysis,
       };
 
+      console.log('Saving check-in with fallback analysis:', checkInData);
       addCheckIn(checkInData);
     }
   };
@@ -400,7 +410,7 @@ const DailyCheckIn = () => {
     // Determine which blocking message to show based on status
     const isInCooldown = status.isInCooldown;
     const noRemaining = status.remainingCheckinsToday === 0;
-    
+
     return (
       <div className="space-y-4 sm:space-y-6 py-4 animate-fade-in">
         {isInCooldown ? (
@@ -589,12 +599,12 @@ const DailyCheckIn = () => {
                 {question?.question}
               </CardTitle>
               {question && (
-              <RadioGroup
+                <RadioGroup
                   value={responses[question.id.toString()]?.selectedOption || ""}
                   onValueChange={handleAnswer}
-                className="grid grid-cols-1 sm:grid-cols-2 gap-2"
-              >
-                {question.options.map((opt) => (
+                  className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+                >
+                  {question.options.map((opt) => (
                     <div
                       key={opt.value}
                       className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50 transition-colors"
@@ -603,9 +613,9 @@ const DailyCheckIn = () => {
                       <Label htmlFor={opt.value} className="text-xs sm:text-sm cursor-pointer flex-1">
                         {opt.text}
                       </Label>
-                  </div>
-                ))}
-              </RadioGroup>
+                    </div>
+                  ))}
+                </RadioGroup>
               )}
               <Progress value={progress} className="h-1.5 mt-2 bg-muted" />
               <p className="text-xs text-muted-foreground">

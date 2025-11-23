@@ -170,38 +170,51 @@ async function callGeminiAPI(prompt: string, maxRetries: number = 3): Promise<st
       try {
         console.log(`🔄 Trying Gemini model: ${model.name} (attempt ${attempt + 1}/${maxRetries})`);
 
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: prompt
-              }]
-            }],
-            generationConfig: {
-              temperature: 0.7,
-              maxOutputTokens: 2000,
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
             },
-          }),
-        });
+            body: JSON.stringify({
+              contents: [{
+                parts: [{
+                  text: prompt
+                }]
+              }],
+              generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: 2000,
+              },
+            }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+          }
+
+          const data = await response.json();
+          const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+          if (!content) {
+            throw new Error('No content from Gemini API');
+          }
+
+          console.log(`✅ Successfully using Gemini model: ${model.name}`);
+          return content;
+
+        } catch (error: any) {
+          clearTimeout(timeoutId);
+          throw error;
         }
 
-        const data = await response.json();
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-        if (!content) {
-          throw new Error('No content from Gemini API');
-        }
-
-        console.log(`✅ Successfully using Gemini model: ${model.name}`);
-        return content;
 
       } catch (error: any) {
         lastError = error;

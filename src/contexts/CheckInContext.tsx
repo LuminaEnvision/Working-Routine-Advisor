@@ -53,6 +53,7 @@ export function CheckInProvider({ children }: { children: ReactNode }) {
 
     try {
       const storageKey = `${STORAGE_KEY}_${address.toLowerCase()}`;
+      console.log('Saving check-ins to storage:', checkIns.length);
       localStorage.setItem(storageKey, JSON.stringify(checkIns));
     } catch (error) {
       console.error('Failed to save check-ins to localStorage:', error);
@@ -60,6 +61,7 @@ export function CheckInProvider({ children }: { children: ReactNode }) {
   }, [checkIns, address, isLoaded]);
 
   const addCheckIn = (checkIn: CheckInData) => {
+    console.log('Adding new check-in:', checkIn);
     setCheckIns((prev) => {
       const updated = [...prev, checkIn];
       // Sort by timestamp to keep them in order
@@ -75,7 +77,7 @@ export function CheckInProvider({ children }: { children: ReactNode }) {
   const getHistoricalData = (days: number): CheckInData[] => {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
-    
+
     return checkIns.filter((checkIn) => {
       const checkInDate = new Date(checkIn.timestamp);
       return checkInDate >= cutoffDate;
