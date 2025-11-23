@@ -75,6 +75,7 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
     ? balance >= CHECKIN_FEE
     : false;
 
+  // Only auto-switch chain once, not on every render
   useEffect(() => {
     if (!isConnected) {
       toast.error('Please connect your wallet');
@@ -82,10 +83,12 @@ export const PaymentGate = ({ checkInData, onPaymentComplete }: PaymentGateProps
       return;
     }
 
-    if (!isOnCorrectChain) {
-      ensureCorrectChain();
-    }
-  }, [isConnected, isOnCorrectChain, ensureCorrectChain, navigate]);
+    // Only attempt chain switch if we're definitely on wrong chain
+    // Don't auto-switch repeatedly - let user control it
+    // if (!isOnCorrectChain && chainId && chainId !== 42220) {
+    //   ensureCorrectChain();
+    // }
+  }, [isConnected, navigate]);
 
 
   const handleOneOffPayment = async () => {

@@ -20,10 +20,11 @@ export const useChainManager = () => {
 
     // Fallback: get chainId from provider if wagmi doesn't have it
     if (isConnected && connector) {
-      const fetchChainId = async () => {
+      let provider: any = null;
+      let cleanupFn: (() => void) | null = null;
+      
+      const setup = async () => {
         try {
-          let provider: any = null;
-          
           // Try to get provider from connector
           if (connector && typeof connector.getProvider === 'function') {
             try {
@@ -42,52 +43,38 @@ export const useChainManager = () => {
             const id = await provider.request({ method: 'eth_chainId' });
             setChainId(Number(id));
           }
-        } catch (error) {
-          console.error('Failed to get chainId:', error);
-        }
-      };
-      
-      fetchChainId();
-      
-      // Set up chain change listener
-      const setupListener = async () => {
-        try {
-          let provider: any = null;
           
-          if (connector && typeof connector.getProvider === 'function') {
-            try {
-              provider = await connector.getProvider();
-            } catch (e) {
-              // Ignore
-            }
-          }
-          
-          if (!provider && window.ethereum) {
-            provider = window.ethereum;
-          }
-          
+          // Set up chain change listener (only once)
           if (provider && provider.on) {
             const handleChainChanged = (chainIdHex: string) => {
+              console.log('Chain changed event:', chainIdHex);
               setChainId(Number(chainIdHex));
             };
             
+            // Remove any existing listener first
+            if (provider.removeListener) {
+              provider.removeListener('chainChanged', handleChainChanged);
+            }
+            
             provider.on('chainChanged', handleChainChanged);
             
-            return () => {
+            cleanupFn = () => {
               if (provider?.removeListener) {
                 provider.removeListener('chainChanged', handleChainChanged);
               }
             };
           }
-        } catch (e) {
-          // Ignore
+        } catch (error) {
+          console.error('Failed to setup chain listener:', error);
         }
       };
       
-      const cleanup = setupListener();
+      setup();
       
       return () => {
-        cleanup.then(cleanupFn => cleanupFn?.());
+        if (cleanupFn) {
+          cleanupFn();
+        }
       };
     } else if (!isConnected) {
       setChainId(undefined);
@@ -162,51 +149,85 @@ export const useChainManager = () => {
           
           // Wait for chain to actually switch and verify
           await new Promise<void>((resolve, reject) => {
+            let resolved = false;
             const timeout = setTimeout(() => {
-              reject(new Error('Chain switch timeout'));
+              if (!resolved) {
+                resolved = true;
+                if (provider.removeListener && handleChainChanged) {
+                  provider.removeListener('chainChanged', handleChainChanged);
+                }
+                reject(new Error('Chain switch timeout'));
+              }
             }, 10000); // 10 second timeout
             
+            let checkCount = 0;
+            const maxChecks = 3;
+            
             const checkChain = async () => {
+              if (resolved) return;
+              checkCount++;
+              
               try {
                 const currentChainId = await provider.request({ method: 'eth_chainId' });
-                if (currentChainId === celoChainId) {
-                  clearTimeout(timeout);
-                  if (provider.removeListener) {
-                    provider.removeListener('chainChanged', handleChainChanged);
+                if (currentChainId === celoChainId || currentChainId.toLowerCase() === celoChainId.toLowerCase()) {
+                  if (!resolved) {
+                    resolved = true;
+                    clearTimeout(timeout);
+                    if (provider.removeListener && handleChainChanged) {
+                      provider.removeListener('chainChanged', handleChainChanged);
+                    }
+                    // Update chain ID immediately
+                    setChainId(TARGET_CHAIN_ID);
+                    resolve();
                   }
-                  // Update chain ID immediately
-                  setChainId(TARGET_CHAIN_ID);
-                  resolve();
+                } else if (checkCount < maxChecks) {
+                  // Continue polling
+                  setTimeout(checkChain, 1000);
                 }
               } catch (e) {
                 // If we can't check, wait a bit and try again
-                setTimeout(checkChain, 500);
+                if (checkCount < maxChecks) {
+                  setTimeout(checkChain, 1000);
+                }
               }
             };
             
             const handleChainChanged = (newChainId: string) => {
-              clearTimeout(timeout);
-              if (provider.removeListener) {
-                provider.removeListener('chainChanged', handleChainChanged);
-              }
+              if (resolved) return;
+              
+              console.log('Chain changed during switch:', newChainId);
               const chainIdNum = Number(newChainId);
               setChainId(chainIdNum);
+              
               if (chainIdNum === TARGET_CHAIN_ID) {
-                resolve();
-              } else {
-                reject(new Error('Chain switch failed'));
+                if (!resolved) {
+                  resolved = true;
+                  clearTimeout(timeout);
+                  if (provider.removeListener && handleChainChanged) {
+                    provider.removeListener('chainChanged', handleChainChanged);
+                  }
+                  resolve();
+                }
               }
             };
             
-            // Listen for chain change event
+            // Listen for chain change event (only if provider supports it)
             if (provider.on) {
+              // Remove any existing listener first
+              if (provider.removeListener) {
+                try {
+                  provider.removeListener('chainChanged', handleChainChanged);
+                } catch (e) {
+                  // Ignore if listener doesn't exist
+                }
+              }
               provider.on('chainChanged', handleChainChanged);
             }
             
-            // Also poll the chain ID in case events don't fire
-            setTimeout(checkChain, 500);
-            setTimeout(checkChain, 1500);
+            // Start polling (reduced frequency)
+            setTimeout(checkChain, 1000);
             setTimeout(checkChain, 3000);
+            setTimeout(checkChain, 6000);
           });
           
           toast.success(`Switched to ${targetChain.name}`);
@@ -237,44 +258,81 @@ export const useChainManager = () => {
             
             // Wait for chain to switch after adding
             await new Promise<void>((resolve, reject) => {
+              let resolved = false;
               const timeout = setTimeout(() => {
-                reject(new Error('Chain switch timeout'));
+                if (!resolved) {
+                  resolved = true;
+                  if (provider.removeListener && handleChainChanged) {
+                    provider.removeListener('chainChanged', handleChainChanged);
+                  }
+                  reject(new Error('Chain switch timeout'));
+                }
               }, 10000);
               
+              let checkCount = 0;
+              const maxChecks = 3;
+              
               const checkChain = async () => {
+                if (resolved) return;
+                checkCount++;
+                
                 try {
                   const currentChainId = await provider.request({ method: 'eth_chainId' });
-                  if (currentChainId === celoChainId) {
-                    clearTimeout(timeout);
-                    setChainId(TARGET_CHAIN_ID);
-                    resolve();
+                  if (currentChainId === celoChainId || currentChainId.toLowerCase() === celoChainId.toLowerCase()) {
+                    if (!resolved) {
+                      resolved = true;
+                      clearTimeout(timeout);
+                      if (provider.removeListener && handleChainChanged) {
+                        provider.removeListener('chainChanged', handleChainChanged);
+                      }
+                      setChainId(TARGET_CHAIN_ID);
+                      resolve();
+                    }
+                  } else if (checkCount < maxChecks) {
+                    setTimeout(checkChain, 1000);
                   }
                 } catch (e) {
-                  setTimeout(checkChain, 500);
+                  if (checkCount < maxChecks) {
+                    setTimeout(checkChain, 1000);
+                  }
                 }
               };
               
               const handleChainChanged = (newChainId: string) => {
-                clearTimeout(timeout);
-                if (provider.removeListener) {
-                  provider.removeListener('chainChanged', handleChainChanged);
-                }
+                if (resolved) return;
+                
+                console.log('Chain changed after add:', newChainId);
                 const chainIdNum = Number(newChainId);
                 setChainId(chainIdNum);
+                
                 if (chainIdNum === TARGET_CHAIN_ID) {
-                  resolve();
-                } else {
-                  reject(new Error('Chain switch failed'));
+                  if (!resolved) {
+                    resolved = true;
+                    clearTimeout(timeout);
+                    if (provider.removeListener && handleChainChanged) {
+                      provider.removeListener('chainChanged', handleChainChanged);
+                    }
+                    resolve();
+                  }
                 }
               };
               
               if (provider.on) {
+                // Remove any existing listener first
+                if (provider.removeListener) {
+                  try {
+                    provider.removeListener('chainChanged', handleChainChanged);
+                  } catch (e) {
+                    // Ignore if listener doesn't exist
+                  }
+                }
                 provider.on('chainChanged', handleChainChanged);
               }
               
-              setTimeout(checkChain, 500);
-              setTimeout(checkChain, 1500);
+              // Start polling (reduced frequency)
+              setTimeout(checkChain, 1000);
               setTimeout(checkChain, 3000);
+              setTimeout(checkChain, 6000);
             });
             
             toast.success(`Added and switched to ${targetChain.name}`);
