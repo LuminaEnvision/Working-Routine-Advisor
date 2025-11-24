@@ -156,8 +156,8 @@ async function callGeminiAPI(prompt: string, maxRetries: number = 3): Promise<st
   }
 
   const models = [
+    { name: 'gemini-2.5-flash-lite', version: 'v1beta' },
     { name: 'gemini-1.5-flash', version: 'v1' },
-    { name: 'gemini-1.5-pro', version: 'v1' },
   ];
 
   let lastError: Error | null = null;
