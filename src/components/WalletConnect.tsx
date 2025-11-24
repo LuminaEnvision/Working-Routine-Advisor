@@ -186,13 +186,30 @@ export const WalletConnect = () => {
     try {
       await disconnect();
       reset();
-      // Clear any local storage related to WalletConnect if needed
-      localStorage.removeItem('walletconnect');
+
+      // Clear all WalletConnect storage to prevent auto-reconnection
+      // Remove WalletConnect v2 session data
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('wc@2:') ||
+          key.startsWith('walletconnect') ||
+          key.startsWith('wagmi.')) {
+          localStorage.removeItem(key);
+        }
+      });
+
       toast.info("Wallet disconnected");
     } catch (e) {
       console.error('Disconnect error:', e);
       // Force reset anyway
       reset();
+      // Still try to clear storage even if disconnect fails
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('wc@2:') ||
+          key.startsWith('walletconnect') ||
+          key.startsWith('wagmi.')) {
+          localStorage.removeItem(key);
+        }
+      });
     }
   };
 

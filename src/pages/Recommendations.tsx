@@ -470,10 +470,7 @@ const Recommendations = () => {
                   {insightsError}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Please check your API keys in the .env file:
-                  <br />• VITE_GEMINI_API_KEY
-                  <br />• VITE_HUGGINGFACE_API_KEY
-                  <br />• VITE_OPENROUTER_API_KEY
+                  Please check that VITE_GEMINI_API_KEY is set in your .env file and that your Gemini API quota hasn't been exceeded.
                 </p>
                 <Button
                   onClick={() => {
@@ -564,7 +561,7 @@ const Recommendations = () => {
               {checkIns.slice(-5).reverse().map((checkIn, index) => (
                 <Card key={index} className="border border-border shadow-sm">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm sm:text-base">
+                    <CardTitle className="text-sm sm:text-base" suppressHydrationWarning>
                       {new Date(checkIn.timestamp).toLocaleDateString('en-US', {
                         weekday: 'long',
                         year: 'numeric',
@@ -572,7 +569,7 @@ const Recommendations = () => {
                         day: 'numeric',
                       })}
                     </CardTitle>
-                    <CardDescription className="text-xs">
+                    <CardDescription className="text-xs" suppressHydrationWarning>
                       {new Date(checkIn.timestamp).toLocaleTimeString('en-US', {
                         hour: '2-digit',
                         minute: '2-digit',
