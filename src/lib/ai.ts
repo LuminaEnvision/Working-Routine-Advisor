@@ -305,7 +305,11 @@ FORMAT YOUR RESPONSE AS JSON ONLY (no markdown, no code blocks):
     }
 
     return parsed;
-  } catch (error) {
+  } catch (error: any) {
+    // If API key is missing, throw error so UI can show it
+    if (error.message?.includes('VITE_GEMINI_API_KEY')) {
+      throw error;
+    }
     console.warn('Gemini API failed, using fallback questions:', error);
     return { questions: FALLBACK_QUESTIONS };
   }
@@ -389,7 +393,11 @@ FORMAT AS JSON ONLY (no markdown, no code blocks):
     }
 
     return parsed as AnalysisResponse;
-  } catch (error) {
+  } catch (error: any) {
+    // If API key is missing, throw error so UI can show it
+    if (error.message?.includes('VITE_GEMINI_API_KEY')) {
+      throw error;
+    }
     console.warn('Gemini analysis failed, using fallback:', error);
     return {
       assessment: 'Based on your check-in, continue tracking your daily habits to identify patterns and areas for improvement.',

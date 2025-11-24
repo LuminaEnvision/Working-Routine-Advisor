@@ -87,6 +87,17 @@ export const useChainManager = () => {
   const isOnCorrectChain = chainId === TARGET_CHAIN_ID;
   const targetChain = celo;
 
+  // Auto-switch chain if connected but on wrong chain (attempt once)
+  useEffect(() => {
+    if (isConnected && chainId !== undefined && !isOnCorrectChain && !isSwitching) {
+      // We use a timeout to avoid immediate conflicts with connection logic
+      const timer = setTimeout(() => {
+        ensureCorrectChain();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isConnected, chainId, isOnCorrectChain, isSwitching]);
+
   const ensureCorrectChain = useCallback(async (): Promise<boolean> => {
     if (!isConnected) {
       toast.error('Please connect your wallet first');
