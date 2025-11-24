@@ -156,9 +156,9 @@ async function callGeminiAPI(prompt: string, maxRetries: number = 3): Promise<st
   }
 
   const models = [
+    { name: 'gemini-1.5-flash', version: 'v1beta' },
+    { name: 'gemini-1.5-pro', version: 'v1beta' },
     { name: 'gemini-2.0-flash-exp', version: 'v1beta' },
-    { name: 'gemini-exp-1206', version: 'v1beta' },
-    { name: 'gemini-2.0-flash-thinking-exp-1219', version: 'v1beta' },
   ];
 
   let lastError: Error | null = null;
@@ -259,7 +259,8 @@ CONTEXT:
 - Previous check-in data: ${previousCheckIn ? JSON.stringify({
     answers: previousAnswers,
     categories: previousCategories,
-    responses: previousResponses
+    responses: previousResponses,
+    previousAnalysis: previousCheckIn.analysis // Include previous analysis for context
   }) : 'No previous data'}
 
 REQUIREMENTS:
@@ -519,8 +520,10 @@ export async function handleChatbotQuery(
 
   const historyContext = checkInHistory.slice(-3).map(checkIn => {
     const date = new Date(checkIn.timestamp).toLocaleDateString();
-    return `${date}: ${JSON.stringify(checkIn.answers)}`;
-  }).join('\n');
+    return `${date}: 
+    Answers: ${JSON.stringify(checkIn.answers)}
+    Analysis: ${JSON.stringify(checkIn.analysis || 'No analysis available')}`;
+  }).join('\n\n');
 
   const prompt = `You are a helpful health and productivity coach assistant. Answer the user's question based on their check-in history.
 

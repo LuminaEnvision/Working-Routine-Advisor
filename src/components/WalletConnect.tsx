@@ -8,8 +8,8 @@ import { isFarcasterMiniApp } from "@/lib/farcaster-miniapp";
 import { useChainManager } from "@/hooks/useChainManager";
 
 export const WalletConnect = () => {
-  const { address, isConnected, chainId } = useAccount();
-  const { connect, connectors, status, error, reset } = useConnect();
+  const { address, isConnected } = useAccount();
+  const { connectAsync, connectors, status, error, reset } = useConnect();
   const { disconnect } = useDisconnect();
   const { isOnCorrectChain, ensureCorrectChain } = useChainManager();
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -21,11 +21,11 @@ export const WalletConnect = () => {
   useEffect(() => {
     if (isInFarcaster && !isConnected && !hasAutoConnected && connectors.length > 0) {
       const farcasterConnector = connectors.find(
-        (connector) => 
-          connector.ready && 
+        (connector) =>
+          connector.ready &&
           (connector.name === 'Farcaster Wallet' || connector.id.includes('farcaster'))
       );
-      
+
       if (farcasterConnector) {
         setHasAutoConnected(true);
         // Connect immediately - wallet is already available in Farcaster
@@ -38,25 +38,22 @@ export const WalletConnect = () => {
         }
 
         setPendingId(connector.id);
-        connect(
-          { connector },
-          {
-            onSuccess: async () => {
-              // Silent success - wallet is automatically connected in Farcaster
-              setPendingId(null);
-              // Ensure correct chain after connection
-              await ensureCorrectChain();
-            },
-            onError: (connectionError) => {
-              // Silent error - don't show toast for auto-connect failures
-              console.warn('Farcaster wallet auto-connect failed:', connectionError);
-              setPendingId(null);
-            },
-          }
-        );
+        setPendingId(connector.id);
+        connectAsync({ connector })
+          .then(async () => {
+            // Silent success - wallet is automatically connected in Farcaster
+            setPendingId(null);
+            // Ensure correct chain after connection
+            await ensureCorrectChain();
+          })
+          .catch((connectionError) => {
+            // Silent error - don't show toast for auto-connect failures
+            console.warn('Farcaster wallet auto-connect failed:', connectionError);
+            setPendingId(null);
+          });
       }
     }
-  }, [isInFarcaster, isConnected, hasAutoConnected, connectors, connect, error, reset, ensureCorrectChain]);
+  }, [isInFarcaster, isConnected, hasAutoConnected, connectors, connectAsync, error, reset, ensureCorrectChain]);
 
   // Filter connectors - show appropriate connectors based on context
   const availableConnectors = useMemo(() => {
@@ -64,10 +61,10 @@ export const WalletConnect = () => {
     if (isInFarcaster) {
       return []; // No connect buttons in Farcaster - wallet is automatically available
     }
-    
+
     // Detect Safari for more lenient connector filtering
     const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    
+
     // Find MetaMask connector first
     const metaMaskConnector = connectors.find(
       (c) => {
@@ -77,33 +74,33 @@ export const WalletConnect = () => {
         return (
           name.includes("metamask") ||
           id.includes("metamask") ||
-          (c.type === "injected" && typeof window !== 'undefined' && window.ethereum?.isMetaMask && name !== "farcaster wallet")
+          ((c as any).type === "injected" && typeof window !== 'undefined' && window.ethereum?.isMetaMask && name !== "farcaster wallet")
         );
       }
     );
-    
+
     // Standalone mode: show connectors except Farcaster and Injected (if MetaMask is available)
     // In Safari, show connectors even if not immediately ready
     return connectors.filter(
       (connector) => {
         // Skip if not ready (unless Safari)
         if (!isSafari && !connector.ready) return false;
-        
+
         // Skip Farcaster wallet
         if (connector.name === 'Farcaster Wallet' || connector.id.includes('farcaster')) {
           return false;
         }
-        
+
         // Hide "Injected Wallet" if MetaMask is available (MetaMask IS an injected wallet)
         if (metaMaskConnector && (connector.name === 'Injected' || connector.name === 'Injected Wallet' || connector.id === 'injected')) {
           return false;
         }
-        
+
         // Skip Safe connector
         if (connector.name?.toLowerCase().includes("safe") || connector.id.toLowerCase().includes("safe")) {
           return false;
         }
-        
+
         return true;
       }
     );
@@ -145,33 +142,29 @@ export const WalletConnect = () => {
 
     setPendingId(connector.id);
     try {
-      connect(
-        { connector },
-        {
-          onSuccess: async () => {
-            toast.success(`${connector.name} connected`);
-            setPendingId(null);
-            // Ensure correct chain after connection
-            await ensureCorrectChain();
-          },
-          onError: (connectionError) => {
-            const errorMessage = connectionError?.message ?? "Failed to connect wallet";
-            // Don't show error for user cancellation
-            if (!errorMessage.includes("reset") && !errorMessage.includes("rejected") && !errorMessage.includes("User rejected")) {
-              const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-              if (isSafari && errorMessage.includes("Connector not found")) {
-                toast.error(
-                  "No wallet found. In Safari, please install MetaMask or use WalletConnect to connect a mobile wallet.",
-                  { duration: 6000 }
-                );
-              } else {
-                toast.error(errorMessage);
-              }
-            }
-            setPendingId(null);
-          },
+      setPendingId(connector.id);
+      try {
+        await connectAsync({ connector });
+        toast.success(`${connector.name} connected`);
+        setPendingId(null);
+        // Ensure correct chain after connection
+        await ensureCorrectChain();
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Connection failed";
+        // Don't show error for user cancellation
+        if (!errorMessage.includes("reset") && !errorMessage.includes("rejected") && !errorMessage.includes("User rejected")) {
+          const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+          if (isSafari && errorMessage.includes("Connector not found")) {
+            toast.error(
+              "No wallet found. In Safari, please install MetaMask or use WalletConnect to connect a mobile wallet.",
+              { duration: 6000 }
+            );
+          } else {
+            toast.error(errorMessage);
+          }
         }
-      );
+        setPendingId(null);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Connection failed";
       if (!errorMessage.includes("reset") && !errorMessage.includes("rejected") && !errorMessage.includes("User rejected")) {
@@ -189,10 +182,18 @@ export const WalletConnect = () => {
     }
   };
 
-  const handleDisconnect = () => {
-    disconnect();
-    reset();
-    toast.info("Wallet disconnected");
+  const handleDisconnect = async () => {
+    try {
+      await disconnect();
+      reset();
+      // Clear any local storage related to WalletConnect if needed
+      localStorage.removeItem('walletconnect');
+      toast.info("Wallet disconnected");
+    } catch (e) {
+      console.error('Disconnect error:', e);
+      // Force reset anyway
+      reset();
+    }
   };
 
   // In Farcaster, if connected, show minimal UI
@@ -209,9 +210,11 @@ export const WalletConnect = () => {
             {address.slice(0, 6)}...{address.slice(-4)}
           </span>
           {!isOnCorrectChain && (
-            <Badge variant="destructive" className="ml-auto">
-              Wrong Chain
-            </Badge>
+            <div className="ml-auto">
+              <Badge variant="destructive">
+                Wrong Chain
+              </Badge>
+            </div>
           )}
         </Button>
         {!isOnCorrectChain && (
@@ -231,22 +234,24 @@ export const WalletConnect = () => {
   if (isConnected && address) {
     return (
       <div className="space-y-2">
-      <Button
-        onClick={handleDisconnect}
-        variant="outline"
-        className="w-full justify-start gap-2"
-      >
-        <Wallet className="w-4 h-4" />
-        <span className="font-mono text-sm">
-          {address.slice(0, 6)}...{address.slice(-4)}
-        </span>
+        <Button
+          onClick={handleDisconnect}
+          variant="outline"
+          className="w-full justify-start gap-2"
+        >
+          <Wallet className="w-4 h-4" />
+          <span className="font-mono text-sm">
+            {address.slice(0, 6)}...{address.slice(-4)}
+          </span>
           {!isOnCorrectChain && (
-            <Badge variant="destructive" className="ml-auto">
-              Wrong Chain
-            </Badge>
+            <div className="ml-auto">
+              <Badge variant="destructive">
+                Wrong Chain
+              </Badge>
+            </div>
           )}
-        <LogOut className="w-4 h-4 ml-auto" />
-      </Button>
+          <LogOut className="w-4 h-4 ml-auto" />
+        </Button>
         {!isOnCorrectChain && (
           <Button
             onClick={ensureCorrectChain}
@@ -283,17 +288,17 @@ export const WalletConnect = () => {
   return (
     <div className="space-y-2">
       {availableConnectors.map((connector) => (
-    <Button
+        <Button
           key={connector.id}
           onClick={() => handleConnect(connector.id)}
-      className="w-full bg-gradient-primary gap-2"
-          disabled={status === "pending" && pendingId === connector.id}
-    >
-      <Wallet className="w-5 h-5" />
-          {status === "pending" && pendingId === connector.id
+          className="w-full bg-gradient-primary gap-2"
+          disabled={status === "loading" && pendingId === connector.id}
+        >
+          <Wallet className="w-5 h-5" />
+          {status === "loading" && pendingId === connector.id
             ? `Connecting ${connector.name}...`
             : `Connect ${connector.name}`}
-    </Button>
+        </Button>
       ))}
       {error && (
         <p className="text-sm text-destructive">

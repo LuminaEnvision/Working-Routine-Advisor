@@ -613,7 +613,10 @@ const Recommendations = () => {
                   variant="ghost"
                   size="sm"
                   className="w-full text-xs text-muted-foreground"
-                  onClick={() => window.location.reload()}
+                  onClick={() => {
+                    refetchStatus();
+                    toast.success('Data refreshed');
+                  }}
                 >
                   Refresh Data
                 </Button>

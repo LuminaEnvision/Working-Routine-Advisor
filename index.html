@@ -9,6 +9,20 @@
       "button": {
         "title": "Open Working Routine Advisor",
         "action": {
+          "type": "launch_miniapp",
+          "name": "Working Routine Advisor",
+          "url": "https://working-routine-advisor.vercel.app/",
+          "splashImageUrl": "https://gateway.pinata.cloud/ipfs/bafybeiavld4bpn2kxhernnsfvpv5dkbr3krzntsp6cuhzay3nix4yo33zq?filename=splashWRA.png",
+          "splashBackgroundColor": "#000000"
+        }
+      }
+    }' />
+  <meta name="fc:frame" content='{
+      "version": "1",
+      "imageUrl": "https://gateway.pinata.cloud/ipfs/bafybeiansw55tjsxnng3i7njc2mttba4ccw64a3uwjwlvfhva2uud54ai4?filename=ogImageWRA.png",
+      "button": {
+        "title": "Open Working Routine Advisor",
+        "action": {
           "type": "launch_frame",
           "name": "Working Routine Advisor",
           "url": "https://working-routine-advisor.vercel.app/",
@@ -30,14 +44,14 @@
     content="productivity, daily check-in, AI insights, work habits, routine tracking, productivity advisor" />
 
   <!-- Favicons for all browsers and devices -->
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-  <link rel="shortcut icon" href="/favicon.ico" />
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-  <link rel="mask-icon" href="/favicon.svg" color="#35D07F" />
+  <link rel="icon"
+    href="https://gateway.pinata.cloud/ipfs/bafybeihklipunixc2233umdxmrm5hryq7lrqx2zga7zng54iwze2to6fya?filename=iconWRA.png" />
+  <link rel="apple-touch-icon"
+    href="https://gateway.pinata.cloud/ipfs/bafybeihklipunixc2233umdxmrm5hryq7lrqx2zga7zng54iwze2to6fya?filename=iconWRA.png" />
   <meta name="theme-color" content="#35D07F" />
   <meta name="msapplication-TileColor" content="#35D07F" />
-  <meta name="msapplication-TileImage" content="/apple-touch-icon.png" />
+  <meta name="msapplication-TileImage"
+    content="https://gateway.pinata.cloud/ipfs/bafybeihklipunixc2233umdxmrm5hryq7lrqx2zga7zng54iwze2to6fya?filename=iconWRA.png" />
 
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website" />
@@ -79,20 +93,20 @@
   <!-- CRITICAL: Call ready() when Base Build SDK is available -->
   <!-- This matches the pattern used by working Next.js apps like DeCleanup -->
   <script>
-    (function() {
+    (function () {
       console.log('🔍 Initializing Farcaster ready() handler...');
-      
+
       let readyCalled = false;
-      
+
       // Function to call ready() - matches DeCleanup pattern
       function callReady() {
         if (readyCalled) {
           console.log('ready() already called, skipping');
           return;
         }
-        
+
         if (typeof window === 'undefined') return;
-        
+
         // Method 1: window.farcaster.sdk.actions.ready() (Base Build pattern)
         if (window.farcaster?.sdk?.actions?.ready) {
           try {
@@ -107,7 +121,7 @@
             console.error('❌ Error calling sdk.actions.ready():', error);
           }
         }
-        
+
         // Method 2: window.farcaster.sdk.ready()
         if (window.farcaster?.sdk?.ready) {
           try {
@@ -123,10 +137,10 @@
           }
         }
       }
-      
+
       // Wait for DOM to be ready, then start polling
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
           console.log('DOM loaded, starting SDK detection...');
           startPolling();
         });
@@ -134,17 +148,17 @@
         // DOM already loaded
         startPolling();
       }
-      
+
       function startPolling() {
         // Try immediately
         callReady();
-        
+
         // Poll for SDK (Base Build injects it asynchronously)
         let attempts = 0;
         const maxAttempts = 100; // 10 seconds
-        const pollInterval = setInterval(function() {
+        const pollInterval = setInterval(function () {
           attempts++;
-          
+
           if (window.farcaster?.sdk) {
             console.log('✅ SDK detected on attempt', attempts);
             callReady();
@@ -157,10 +171,10 @@
           }
         }, 100);
       }
-      
+
       // Also listen for potential SDK injection events
       if (window.addEventListener) {
-        window.addEventListener('load', function() {
+        window.addEventListener('load', function () {
           console.log('Window loaded, checking for SDK...');
           setTimeout(callReady, 100);
         });
