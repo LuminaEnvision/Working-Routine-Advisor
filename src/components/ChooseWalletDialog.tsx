@@ -24,7 +24,30 @@ export const ChooseWalletDialog = ({
   onWalletSelected,
 }: ChooseWalletDialogProps) => {
   const { isConnected, connector } = useAccount();
-  const { connect, connectors } = useConnect();
+  const { connect, connectors } = useConnect({
+    onSuccess: (data) => {
+      toast.success(`${data.connector?.name ?? 'Wallet'} connected`);
+      setIsConnecting(false);
+      onWalletSelected?.();
+      onOpenChange(false);
+    },
+    onError: (error) => {
+      const errorMessage = error?.message ?? "Failed to connect wallet";
+      if (!errorMessage.includes("reset") && !errorMessage.includes("rejected") && !errorMessage.includes("User rejected")) {
+        const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        if (isSafari && errorMessage.includes("Connector not found")) {
+          toast.error(
+            "No wallet found. In Safari, please install MetaMask or use WalletConnect to connect a mobile wallet.",
+            { duration: 6000 }
+          );
+        } else {
+          toast.error(errorMessage);
+        }
+      }
+      setIsConnecting(false);
+      setSelectedWallet(null);
+    },
+  });
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const isInFarcaster = isFarcasterMiniApp();
@@ -38,7 +61,6 @@ export const ChooseWalletDialog = ({
         id: c.id,
         name: c.name,
         ready: c.ready,
-        type: c.type,
         canConnect: isSafari || c.ready
       })));
       console.log('window.ethereum available:', typeof window !== 'undefined' && !!window.ethereum);
@@ -52,7 +74,7 @@ export const ChooseWalletDialog = ({
   const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const isMobile = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const isMobileOrSafari = isMobile || isSafari;
-  
+
   // Find Farcaster, MetaMask, and External wallet connectors
   // More flexible matching - check name, id, and type
   // On mobile/Safari, be more lenient with ready check - show connectors even if not immediately ready
@@ -75,8 +97,8 @@ export const ChooseWalletDialog = ({
       // Prefer connectors with "metamask" in id/name over generic injected connectors
       // This ensures we pick MetaMaskConnector over InjectedConnector when both exist
       const isMetaMaskSpecific = name.includes("metamask") || id.includes("metamask");
-      const isInjectedWithMetaMask = c.type === "injected" && typeof window !== 'undefined' && window.ethereum?.isMetaMask && name !== "farcaster wallet";
-      
+      const isInjectedWithMetaMask = c.id === "injected" && typeof window !== 'undefined' && window.ethereum?.isMetaMask && name !== "farcaster wallet";
+
       // If we find a MetaMask-specific connector, use it
       if (isMetaMaskSpecific) return true;
       // Otherwise, only use injected connector if no MetaMask-specific connector exists
@@ -89,18 +111,16 @@ export const ChooseWalletDialog = ({
       // On mobile, always show WalletConnect (it's the best option for mobile)
       if (isMobile) return (
         c.name?.toLowerCase().includes("walletconnect") ||
-        c.id.toLowerCase().includes("walletconnect") ||
-        c.type === "walletConnect"
+        c.id.toLowerCase().includes("walletconnect")
       );
       // On Safari/desktop, show if ready or Safari
       return (isSafari || c.ready) && (
         c.name?.toLowerCase().includes("walletconnect") ||
-        c.id.toLowerCase().includes("walletconnect") ||
-        c.type === "walletConnect"
+        c.id.toLowerCase().includes("walletconnect")
       );
     }
   );
-  
+
   // Hide "Injected Wallet" if MetaMask is available (MetaMask IS an injected wallet)
   // Only show it as a fallback if MetaMask isn't available
   // Also hide Safe and other connectors we don't want to show
@@ -110,23 +130,23 @@ export const ChooseWalletDialog = ({
       if (c === farcasterConnector || c === metaMaskConnector || c === walletConnectConnector) {
         return false;
       }
-      
+
       // Skip Safe connector
       if (c.name?.toLowerCase().includes("safe") || c.id.toLowerCase().includes("safe")) {
         return false;
       }
-      
+
       // Hide "Injected Wallet" if MetaMask is available
       // MetaMask is an injected wallet, so we don't need both
       // Also hide any injected connector that would show as MetaMask
       if (metaMaskConnector) {
-        const isInjected = c.type === 'injected' || c.id === 'injected' || c.name === 'Injected' || c.name === 'Injected Wallet';
+        const isInjected = c.id === 'injected' || c.name === 'Injected' || c.name === 'Injected Wallet';
         const wouldShowAsMetaMask = isInjected && typeof window !== 'undefined' && window.ethereum?.isMetaMask;
         if (isInjected || wouldShowAsMetaMask) {
           return false;
         }
       }
-      
+
       // Only show if ready (or Safari with lenient check)
       return isSafari || c.ready;
     }
@@ -165,33 +185,7 @@ export const ChooseWalletDialog = ({
     setIsConnecting(true);
 
     try {
-      connect(
-        { connector },
-        {
-          onSuccess: () => {
-            toast.success(`${connector.name} connected`);
-            setIsConnecting(false);
-            onWalletSelected?.();
-            onOpenChange(false);
-          },
-          onError: (error) => {
-            const errorMessage = error?.message ?? "Failed to connect wallet";
-            if (!errorMessage.includes("reset") && !errorMessage.includes("rejected") && !errorMessage.includes("User rejected")) {
-              const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-              if (isSafari && errorMessage.includes("Connector not found")) {
-                toast.error(
-                  "No wallet found. In Safari, please install MetaMask or use WalletConnect to connect a mobile wallet.",
-                  { duration: 6000 }
-                );
-              } else {
-                toast.error(errorMessage);
-              }
-            }
-            setIsConnecting(false);
-            setSelectedWallet(null);
-          },
-        }
-      );
+      connect({ connector });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Connection failed";
       if (!errorMessage.includes("reset") && !errorMessage.includes("rejected") && !errorMessage.includes("User rejected")) {
@@ -233,7 +227,7 @@ export const ChooseWalletDialog = ({
           {!farcasterConnector && !metaMaskConnector && !walletConnectConnector && otherConnectors.length === 0 && (
             <div className="p-4 border border-dashed border-muted rounded-lg">
               <p className="text-xs text-muted-foreground mb-2">
-                {isSafari 
+                {isSafari
                   ? "Safari detected: MetaMask may not work due to browser restrictions. Try WalletConnect or install MetaMask and grant permissions."
                   : "No connectors available. Available connectors:"}
               </p>
@@ -241,7 +235,7 @@ export const ChooseWalletDialog = ({
                 <div className="space-y-1 text-xs">
                   {connectors.map((c) => (
                     <div key={c.id} className="text-muted-foreground">
-                      {c.name || 'Unknown'} ({c.id}) - Ready: {c.ready ? 'Yes' : 'No'} - Type: {c.type}
+                      {c.name || 'Unknown'} ({c.id}) - Ready: {c.ready ? 'Yes' : 'No'}
                     </div>
                   ))}
                 </div>
@@ -261,11 +255,10 @@ export const ChooseWalletDialog = ({
                 }
               }}
               disabled={isConnecting && selectedWallet !== farcasterConnector.id}
-              className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                isConnected && connector?.id === farcasterConnector.id
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/50 hover:bg-muted/50"
-              } ${isConnecting && selectedWallet === farcasterConnector.id ? "opacity-50 cursor-wait" : ""}`}
+              className={`w-full p-4 rounded-lg border-2 transition-all text-left ${isConnected && connector?.id === farcasterConnector.id
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-primary/50 hover:bg-muted/50"
+                } ${isConnecting && selectedWallet === farcasterConnector.id ? "opacity-50 cursor-wait" : ""}`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -300,11 +293,10 @@ export const ChooseWalletDialog = ({
                 }
               }}
               disabled={isConnecting && selectedWallet !== metaMaskConnector.id}
-              className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                isConnected && connector?.id === metaMaskConnector.id
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/50 hover:bg-muted/50"
-              } ${isConnecting && selectedWallet === metaMaskConnector.id ? "opacity-50 cursor-wait" : ""}`}
+              className={`w-full p-4 rounded-lg border-2 transition-all text-left ${isConnected && connector?.id === metaMaskConnector.id
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-primary/50 hover:bg-muted/50"
+                } ${isConnecting && selectedWallet === metaMaskConnector.id ? "opacity-50 cursor-wait" : ""}`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -314,8 +306,8 @@ export const ChooseWalletDialog = ({
                   <div>
                     <p className="font-semibold text-sm sm:text-base">MetaMask</p>
                     <p className="text-xs text-muted-foreground">
-                      {isSafari && !metaMaskConnector.ready 
-                        ? "May not work in Safari - try WalletConnect" 
+                      {isSafari && !metaMaskConnector.ready
+                        ? "May not work in Safari - try WalletConnect"
                         : "Browser extension wallet"}
                     </p>
                   </div>
@@ -341,11 +333,10 @@ export const ChooseWalletDialog = ({
                 }
               }}
               disabled={isConnecting && selectedWallet !== walletConnectConnector.id}
-              className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                isConnected && connector?.id === walletConnectConnector.id
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/50 hover:bg-muted/50"
-              } ${isConnecting && selectedWallet === walletConnectConnector.id ? "opacity-50 cursor-wait" : ""}`}
+              className={`w-full p-4 rounded-lg border-2 transition-all text-left ${isConnected && connector?.id === walletConnectConnector.id
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-primary/50 hover:bg-muted/50"
+                } ${isConnecting && selectedWallet === walletConnectConnector.id ? "opacity-50 cursor-wait" : ""}`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -379,11 +370,10 @@ export const ChooseWalletDialog = ({
                 }
               }}
               disabled={isConnecting && selectedWallet !== c.id}
-              className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                isConnected && connector?.id === c.id
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/50 hover:bg-muted/50"
-              } ${isConnecting && selectedWallet === c.id ? "opacity-50 cursor-wait" : ""}`}
+              className={`w-full p-4 rounded-lg border-2 transition-all text-left ${isConnected && connector?.id === c.id
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-primary/50 hover:bg-muted/50"
+                } ${isConnecting && selectedWallet === c.id ? "opacity-50 cursor-wait" : ""}`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">

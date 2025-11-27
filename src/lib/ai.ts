@@ -62,6 +62,7 @@ interface Meal {
   ingredients: string[];
   steps: string[];
   benefits: string;
+  imageUrl?: string; // AI-generated image URL for this specific recipe
 }
 
 interface InsightResponse {

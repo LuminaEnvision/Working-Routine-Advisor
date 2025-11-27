@@ -142,43 +142,99 @@ const Recommendations = () => {
   const renderMeal = (meal: Meal | undefined, mealType: string) => {
     if (!meal) return null;
 
+    // Use wide format images
+    const mealImages: Record<string, string> = {
+      breakfast: "/images/meal_breakfast_wide.png",
+      lunch: "/images/meal_lunch_wide.png",
+      dinner: "/images/meal_dinner_wide.png",
+    };
+
+    const imageSrc = mealImages[mealType];
+
     return (
-      <Card key={mealType} className="border border-border shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm sm:text-base flex items-center gap-2">
-            <Utensils className="w-5 h-5 text-primary" />
-            {mealType.charAt(0).toUpperCase() + mealType.slice(1)}: {meal.name}
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Prep time: {meal.prepTime}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <h4 className="text-xs font-semibold mb-2">Ingredients:</h4>
-            <ul className="text-xs sm:text-sm text-muted-foreground space-y-1">
-              {meal.ingredients.map((ingredient, idx) => (
-                <li key={idx} className="flex items-start gap-2">
-                  <span className="text-primary">•</span>
-                  <span>{ingredient}</span>
-                </li>
-              ))}
-            </ul>
+      <Card key={mealType} className="border border-border shadow-sm overflow-hidden group">
+        {/* Image Header */}
+        <div className="h-32 sm:h-40 w-full overflow-hidden relative">
+          <img
+            src={imageSrc}
+            alt={meal.name}
+            className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-700"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+              (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex items-end p-4">
+            <div className="w-full">
+              <div className="flex justify-between items-end mb-1">
+                <Badge className="bg-white/20 hover:bg-white/30 text-white border-none backdrop-blur-md capitalize">
+                  {mealType}
+                </Badge>
+                <span className="text-xs font-medium text-white/90 bg-black/30 px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  {meal.prepTime}
+                </span>
+              </div>
+              <h3 className="text-white font-bold text-lg leading-tight text-shadow-sm line-clamp-1">
+                {meal.name}
+              </h3>
+            </div>
           </div>
-          <div>
-            <h4 className="text-xs font-semibold mb-2">Steps:</h4>
-            <ol className="text-xs sm:text-sm text-muted-foreground space-y-1">
-              {meal.steps.map((step, idx) => (
-                <li key={idx} className="flex items-start gap-2">
-                  <span className="text-primary font-semibold">{idx + 1}.</span>
-                  <span>{step}</span>
-                </li>
-              ))}
-            </ol>
+        </div>
+
+        <CardContent className="p-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Ingredients */}
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1">
+                <span className="w-1 h-4 bg-primary rounded-full"></span>
+                Ingredients
+              </h4>
+              <ul className="text-xs sm:text-sm space-y-1.5">
+                {meal.ingredients.slice(0, 5).map((ingredient, idx) => (
+                  <li key={idx} className="flex items-start gap-2 text-muted-foreground">
+                    <span className="text-primary mt-1">•</span>
+                    <span className="line-clamp-1">{ingredient}</span>
+                  </li>
+                ))}
+                {meal.ingredients.length > 5 && (
+                  <li className="text-xs text-muted-foreground italic pl-3">
+                    + {meal.ingredients.length - 5} more...
+                  </li>
+                )}
+              </ul>
+            </div>
+
+            {/* Steps */}
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1">
+                <span className="w-1 h-4 bg-accent rounded-full"></span>
+                Instructions
+              </h4>
+              <ol className="text-xs sm:text-sm space-y-2">
+                {meal.steps.slice(0, 3).map((step, idx) => (
+                  <li key={idx} className="flex items-start gap-2 text-muted-foreground">
+                    <span className="font-semibold text-foreground min-w-[12px]">{idx + 1}.</span>
+                    <span className="line-clamp-2">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
           </div>
-          <div>
-            <h4 className="text-xs font-semibold mb-2">Benefits:</h4>
-            <p className="text-xs sm:text-sm text-muted-foreground">{meal.benefits}</p>
+
+          {/* Benefits Footer */}
+          <div className="pt-3 border-t border-border/50">
+            <div className="flex gap-2 items-start">
+              <div className="shrink-0 mt-0.5">
+                <div className="w-5 h-5 rounded-full bg-green-500/10 flex items-center justify-center text-green-600">
+                  <Utensils className="w-3 h-3" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                <span className="font-semibold text-foreground">Why this helps: </span>
+                {meal.benefits}
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -315,33 +371,106 @@ const Recommendations = () => {
                     <div className="space-y-3">
                       {latestAnalysis.recommendations
                         .sort((a, b) => a.priority - b.priority)
-                        .map((rec, index) => (
-                          <Card key={index} className="border border-border shadow-sm">
-                            <CardHeader className="pb-2">
-                              <div className="flex items-center justify-between">
-                                <CardTitle className="text-xs sm:text-sm font-semibold">
-                                  {rec.title}
-                                </CardTitle>
-                                <Badge variant="outline">
-                                  Priority {rec.priority}
-                                </Badge>
-                              </div>
-                              <CardDescription className="text-xs capitalize">
-                                {rec.category}
-                              </CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-2">
-                              <p className="text-xs sm:text-sm text-muted-foreground">
-                                <span className="font-semibold">Action: </span>
-                                {rec.action}
-                              </p>
-                              <p className="text-xs sm:text-sm text-muted-foreground">
-                                <span className="font-semibold">Why: </span>
-                                {rec.why}
-                              </p>
-                            </CardContent>
-                          </Card>
-                        ))}
+                        .map((rec, index) => {
+                          // Map categories to images
+                          const categoryImages: Record<string, string> = {
+                            sleep: "/images/category_sleep_wide.png",
+                            nutrition: "/images/category_nutrition_wide.png",
+                            activity: "/images/category_activity_wide.png",
+                            stress: "/images/category_stress_wide.png",
+                            productivity: "/images/category_productivity_wide.png",
+                          };
+
+                          // Normalize category to lowercase for matching
+                          const normalizedCategory = rec.category.toLowerCase();
+                          // Simple matching logic - can be improved
+                          let imageSrc = null;
+                          if (normalizedCategory.includes('sleep')) imageSrc = categoryImages.sleep;
+                          else if (normalizedCategory.includes('nutrition') || normalizedCategory.includes('food') || normalizedCategory.includes('diet')) imageSrc = categoryImages.nutrition;
+                          else if (normalizedCategory.includes('activity') || normalizedCategory.includes('exercise') || normalizedCategory.includes('workout')) imageSrc = categoryImages.activity;
+                          else if (normalizedCategory.includes('stress') || normalizedCategory.includes('mental')) imageSrc = categoryImages.stress;
+                          else if (normalizedCategory.includes('productiv') || normalizedCategory.includes('work') || normalizedCategory.includes('focus')) imageSrc = categoryImages.productivity;
+
+                          return (
+                            <Card key={index} className="border border-border shadow-sm overflow-hidden group">
+                              {imageSrc && (
+                                <div className="h-32 sm:h-40 w-full overflow-hidden relative">
+                                  <img
+                                    src={imageSrc}
+                                    alt={rec.category}
+                                    className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-700"
+                                    onError={(e) => {
+                                      // Hide image if it fails to load
+                                      (e.target as HTMLImageElement).style.display = 'none';
+                                      (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+                                    }}
+                                  />
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex items-end p-4">
+                                    <div className="w-full">
+                                      <div className="flex justify-between items-end">
+                                        <Badge className="bg-white/20 hover:bg-white/30 text-white border-none backdrop-blur-md mb-1">
+                                          {rec.category}
+                                        </Badge>
+                                        <Badge variant={rec.priority === 1 ? "destructive" : "secondary"} className="shadow-sm">
+                                          Priority {rec.priority}
+                                        </Badge>
+                                      </div>
+                                      <h4 className="text-white font-bold text-lg leading-tight mt-1 text-shadow-sm">
+                                        {rec.title}
+                                      </h4>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              <CardContent className={imageSrc ? "pt-4 pb-4" : "pt-4 pb-4"}>
+                                {!imageSrc && (
+                                  <div className="flex items-center justify-between mb-2">
+                                    <CardTitle className="text-sm sm:text-base font-semibold">
+                                      {rec.title}
+                                    </CardTitle>
+                                    <div className="flex gap-2">
+                                      <Badge variant="outline">
+                                        {rec.category}
+                                      </Badge>
+                                      <Badge variant={rec.priority === 1 ? "destructive" : "secondary"}>
+                                        Priority {rec.priority}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="space-y-3">
+                                  <div className="flex gap-3">
+                                    <div className="shrink-0 mt-0.5">
+                                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                        <TrendingUp className="w-3.5 h-3.5" />
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <span className="text-xs font-semibold text-foreground uppercase tracking-wide">Action</span>
+                                      <p className="text-sm text-muted-foreground mt-0.5">
+                                        {rec.action}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex gap-3">
+                                    <div className="shrink-0 mt-0.5">
+                                      <div className="w-6 h-6 rounded-full bg-accent/10 flex items-center justify-center text-accent">
+                                        <Lightbulb className="w-3.5 h-3.5" />
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <span className="text-xs font-semibold text-foreground uppercase tracking-wide">Why it helps</span>
+                                      <p className="text-sm text-muted-foreground mt-0.5">
+                                        {rec.why}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
                     </div>
                   </div>
                 )}
@@ -353,7 +482,7 @@ const Recommendations = () => {
                       <Utensils className="w-4 h-4 text-primary" />
                       Personalized Meal Plan
                     </h3>
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       {renderMeal(latestAnalysis.mealPlan.breakfast, 'breakfast')}
                       {renderMeal(latestAnalysis.mealPlan.lunch, 'lunch')}
                       {renderMeal(latestAnalysis.mealPlan.dinner, 'dinner')}
@@ -558,7 +687,7 @@ const Recommendations = () => {
           {checkIns.length > 0 ? (
             <div className="space-y-3">
               <h2 className="text-lg font-semibold">Recent Check-ins</h2>
-              {checkIns.slice(-5).reverse().map((checkIn, index) => (
+              {checkIns.slice(-4).reverse().map((checkIn, index) => (
                 <Card key={index} className="border border-border shadow-sm">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm sm:text-base" suppressHydrationWarning>
